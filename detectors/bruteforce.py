@@ -1,9 +1,11 @@
 from scapy.all import sniff, IP, TCP, conf
 from collections import defaultdict, deque
 import time
-import json
-import atexit
 from datetime import datetime
+
+from core.logger   import Logger
+from core.window   import clean_old, prune_stale
+from core.alerting import build_alert, severity_bruteforce
 
 # =========================
 # CONFIG
@@ -14,28 +16,22 @@ ALERT_COOLDOWN    = 20
 PRUNE_INTERVAL    = 60
 TARGET_PORTS      = {22, 21, 23}
 WHITELIST         = {"127.0.0.1"}
-LOG_FILE          = "data/bruteforce_logs.jsonl"
 IFACE             = None
 
 # =========================
 # STORAGE
 # =========================
-attempts    = defaultdict(deque)
+attempts    = defaultdict(deque)   # ip → [(port, timestamp, flags)]
 alerted_ips = {}
 last_prune  = time.time()
 
 # =========================
 # LOGGER
 # =========================
-log_file = open(LOG_FILE, "a")
-atexit.register(log_file.close)
-
-def log_event(data):
-    log_file.write(json.dumps(data) + "\n")
-    log_file.flush()
+logger = Logger("data/bruteforce_logs.jsonl")
 
 # =========================
-# PRIVATE IP CHECK          ← fix 1
+# PRIVATE IP CHECK
 # =========================
 def is_private(ip):
     if ip.startswith(("192.168.", "10.")):
@@ -82,33 +78,7 @@ def extract_features(ip):
     }
 
 # =========================
-# CLEAN OLD DATA
-# =========================
-def clean_attempts(ip, now):
-    window = attempts[ip]
-    while window and (now - window[0][1]) > TIME_WINDOW:
-        window.popleft()
-
-# =========================
-# PRUNE STALE IPs
-# =========================
-def prune_stale(now):
-    stale = [ip for ip, dq in attempts.items() if not dq]
-    for ip in stale:
-        del attempts[ip]
-        alerted_ips.pop(ip, None)
-
-# =========================
-# SEVERITY
-# =========================
-def compute_severity(total_attempts):
-    if total_attempts > 100: return "CRITICAL"
-    if total_attempts > 40:  return "HIGH"
-    if total_attempts > 20:  return "MEDIUM"
-    return "LOW"
-
-# =========================
-# DETECTION
+# DETECTION ENGINE
 # =========================
 def detect(packet):
     global last_prune
@@ -126,16 +96,16 @@ def detect(packet):
         return
     if src_ip == dst_ip:
         return
-    if not is_private(dst_ip):          # fix 1
+    if not is_private(dst_ip):
         return
     if dport not in TARGET_PORTS:
         return
 
     attempts[src_ip].append((dport, now, flags))
-    clean_attempts(src_ip, now)
+    clean_old(attempts[src_ip], now, TIME_WINDOW, ts_index=1)
 
     if now - last_prune > PRUNE_INTERVAL:
-        prune_stale(now)
+        prune_stale(attempts, alerted_ips)
         last_prune = now
 
     features = extract_features(src_ip)
@@ -146,67 +116,43 @@ def detect(packet):
     unique_ports     = features["unique_ports"]
     port_focus_ratio = features["port_focus_ratio"]
 
-    # =========================
-    # LOG EVERY PACKET
-    # =========================
-    log_event({
+    logger.log({
         "timestamp" : str(datetime.now()),
         "source_ip" : src_ip,
         "target_ip" : dst_ip,
         "dport"     : dport,
         "flags"     : flags,
-        "label"     : 0,                # fix 4
+        "label"     : 0,
         **features
     })
 
-    # Anti-spam
     last_alert = alerted_ips.get(src_ip, 0)
     if now - last_alert < ALERT_COOLDOWN:
         return
 
-    # =========================
-    # DETECTION LOGIC
-    # =========================
     alert_type = None
-
-    if (
-        total_attempts >= ATTEMPT_THRESHOLD
-        and unique_ports <= 2
-        and features["syn_ratio"] > 0.6     # kept — strong signal
-                                            # duration < 10 removed — fix 2
-    ):
+    if total_attempts >= ATTEMPT_THRESHOLD and unique_ports <= 2 and features["syn_ratio"] > 0.6:
         alert_type = "BRUTE_FORCE"
-
-    elif (
-        total_attempts >= 20
-        and port_focus_ratio < 0.4
-                                            # duration < 15 removed — fix 2
-    ):
+    elif total_attempts >= 20 and port_focus_ratio < 0.4:
         alert_type = "CREDENTIAL_STUFFING"
 
     if alert_type:
-        severity = compute_severity(total_attempts)
-        alert = {
-            "timestamp" : str(datetime.now()),
-            "type"      : alert_type,
-            "source_ip" : src_ip,
-            "target_ip" : dst_ip,
-            "severity"  : severity,
-            "label"     : 1,            # fix 4
-            **features
-        }
-        print(
-            f"🚨 ALERT [{severity}] [{alert_type}] "
-            f"{src_ip} → {dst_ip} | attempts: {total_attempts} "
-            f"| ports: {unique_ports} | focus: {port_focus_ratio}"
+        alert = build_alert(
+            alert_type = alert_type,
+            source_ip  = src_ip,
+            target_ip  = dst_ip,
+            severity   = severity_bruteforce(total_attempts),
+            features   = features
         )
-        log_event(alert)
+        print(f"🚨 ALERT [{alert['severity']}] [{alert_type}] {src_ip} → {dst_ip} "
+              f"| attempts: {total_attempts} | ports: {unique_ports} | focus: {port_focus_ratio}")
+        logger.log(alert)
         alerted_ips[src_ip] = now
 
 # =========================
 # START
 # =========================
-if __name__ == "__main__":              # fix 3
+if __name__ == "__main__":
     port_filter = " or ".join(f"dst port {p}" for p in TARGET_PORTS)
     bpf_filter  = f"tcp and ({port_filter})"
     iface       = IFACE or conf.iface

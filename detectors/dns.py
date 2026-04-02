@@ -1,9 +1,11 @@
 from scapy.all import sniff, IP, UDP, DNS, DNSQR, conf
 from collections import defaultdict, deque
 import time
-import json
-import atexit
 from datetime import datetime
+
+from core.logger   import Logger
+from core.window   import clean_old, prune_stale
+from core.alerting import build_alert, severity_dns
 
 # =========================
 # CONFIG
@@ -13,56 +15,24 @@ REQUEST_THRESHOLD = 20
 ALERT_COOLDOWN    = 20
 PRUNE_INTERVAL    = 60
 WHITELIST         = {"127.0.0.1"}
-LOG_FILE          = "data/dns_logs.jsonl"
-IFACE             = None    # None = auto-detect
+IFACE             = None
 
-# =========================
-# QTYPE MAP
-# =========================
 QTYPE_MAP = {
-    1:   "A",
-    2:   "NS",
-    5:   "CNAME",
-    15:  "MX",
-    16:  "TXT",
-    28:  "AAAA",
-    33:  "SRV",
-    255: "ANY"
+    1: "A", 2: "NS", 5: "CNAME", 15: "MX",
+    16: "TXT", 28: "AAAA", 33: "SRV", 255: "ANY"
 }
 
 # =========================
 # STORAGE
 # =========================
-dns_requests = defaultdict(deque)   # {ip: deque[(timestamp, qname, qtype_str)]}
+dns_requests = defaultdict(deque)   # ip → [(timestamp, qname, qtype_str)]
 alerted_ips  = {}
 last_prune   = time.time()
 
 # =========================
-# JSONL LOGGER
+# LOGGER
 # =========================
-log_file = open(LOG_FILE, "a")
-atexit.register(log_file.close)
-
-def log_event(data):
-    log_file.write(json.dumps(data) + "\n")
-    log_file.flush()
-
-# =========================
-# CLEAN OLD DATA
-# =========================
-def clean_requests(ip, now):
-    window = dns_requests[ip]
-    while window and (now - window[0][0]) > TIME_WINDOW:
-        window.popleft()
-
-# =========================
-# PRUNE STALE IPs
-# =========================
-def prune_stale(now):
-    stale = [ip for ip, dq in dns_requests.items() if not dq]
-    for ip in stale:
-        del dns_requests[ip]
-        alerted_ips.pop(ip, None)
+logger = Logger("data/dns_logs.jsonl")
 
 # =========================
 # FEATURE EXTRACTION
@@ -92,7 +62,6 @@ def extract_features(ip):
     type_counts   = defaultdict(int)
     for qt in qtypes:
         type_counts[qt] += 1
-    unique_qtypes = len(set(qtypes))
 
     avg_qname_len = sum(len(q) for q in qnames) / len(qnames)
 
@@ -105,24 +74,13 @@ def extract_features(ip):
         "domain_diversity_ratio": round(domain_diversity_ratio, 3),
         "top_domain"            : top_domain,
         "top_domain_ratio"      : round(top_domain_ratio, 3),
-        "unique_qtypes"         : unique_qtypes,
+        "unique_qtypes"         : len(set(qtypes)),
         "type_counts"           : dict(type_counts),
         "avg_qname_len"         : round(avg_qname_len, 2),
     }
 
 # =========================
-# SEVERITY
-# =========================
-def compute_severity(features):
-    total = features["total_requests"]
-    pps   = features["pps"]
-    if total > 100 or pps > 30: return "CRITICAL"
-    elif total > 50 or pps > 15: return "HIGH"
-    elif total > 30 or pps > 8:  return "MEDIUM"
-    else:                         return "LOW"
-
-# =========================
-# DETECTION
+# DETECTION ENGINE
 # =========================
 def detect(packet):
     global last_prune
@@ -138,7 +96,6 @@ def detect(packet):
 
     if ip_src in WHITELIST:
         return
-
     if packet[DNS].qr != 0:
         return
 
@@ -150,61 +107,48 @@ def detect(packet):
         qtype_str = "unknown"
 
     dns_requests[ip_src].append((now, qname, qtype_str))
-    clean_requests(ip_src, now)
+    clean_old(dns_requests[ip_src], now, TIME_WINDOW, ts_index=0)
 
     if now - last_prune > PRUNE_INTERVAL:
-        prune_stale(now)
+        prune_stale(dns_requests, alerted_ips)
         last_prune = now
 
     features = extract_features(ip_src)
     if not features:
         return
 
-    # =========================
-    # LOG EVERY PACKET
-    # =========================
-    log_event({
+    logger.log({
         "timestamp" : str(datetime.now()),
         "source_ip" : ip_src,
         "target_ip" : ip_dst,
         "qname"     : qname,
         "qtype"     : qtype_str,
-        "label"     : 0,    # default normal — attacker sets to 1
+        "label"     : 0,
         **features
     })
 
-    # Anti-spam
     last_alert = alerted_ips.get(ip_src, 0)
     if now - last_alert < ALERT_COOLDOWN:
         return
 
-    # =========================
-    # DETECTION LOGIC
-    # =========================
     alert_type = None
-
     if features["avg_qname_len"] > 50:
         alert_type = "DNS_TUNNEL"
     elif features["total_requests"] >= REQUEST_THRESHOLD:
         alert_type = "DNS_FLOOD"
 
     if alert_type:
-        severity = compute_severity(features)
-        alert = {
-            "timestamp" : str(datetime.now()),
-            "type"      : alert_type,
-            "source_ip" : ip_src,
-            "target_ip" : ip_dst,
-            "severity"  : severity,
-            "label"     : 1,
-            **features,
-        }
-        print(f"🚨 ALERT [{severity}] [{alert_type}] {ip_src} → {ip_dst} "
-              f"| {features['total_requests']} req "
-              f"| top: {features['top_domain']} "
-              f"| pps: {features['pps']} "
+        alert = build_alert(
+            alert_type = alert_type,
+            source_ip  = ip_src,
+            target_ip  = ip_dst,
+            severity   = severity_dns(features["total_requests"], features["pps"]),
+            features   = features
+        )
+        print(f"🚨 ALERT [{alert['severity']}] [{alert_type}] {ip_src} → {ip_dst} "
+              f"| {features['total_requests']} req | pps: {features['pps']} "
               f"| avg_len: {features['avg_qname_len']}")
-        log_event(alert)
+        logger.log(alert)
         alerted_ips[ip_src] = now
 
 # =========================

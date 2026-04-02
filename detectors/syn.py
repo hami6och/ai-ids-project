@@ -1,9 +1,11 @@
 from scapy.all import sniff, IP, TCP, conf
 from collections import defaultdict, deque
 import time
-import json
-import atexit
 from datetime import datetime
+
+from core.logger   import Logger
+from core.window   import clean_old, prune_stale
+from core.alerting import build_alert, severity_syn_flood, severity_syn_scan
 
 # =========================
 # CONFIG
@@ -14,8 +16,7 @@ SYN_FLOOD_RATE      = 10
 ALERT_COOLDOWN      = 20
 PRUNE_INTERVAL      = 60
 WHITELIST           = {"127.0.0.1"}
-LOG_FILE            = "data/syn_dataset.jsonl"
-IFACE               = None    # None = auto-detect
+IFACE               = None
 
 # =========================
 # STORAGE
@@ -25,31 +26,9 @@ alerted_ips  = {}
 last_prune   = time.time()
 
 # =========================
-# JSONL LOGGER
+# LOGGER
 # =========================
-log_file = open(LOG_FILE, "a")
-atexit.register(log_file.close)
-
-def log_event(data):
-    log_file.write(json.dumps(data) + "\n")
-    log_file.flush()
-
-# =========================
-# CLEAN OLD DATA (popleft O(1))
-# =========================
-def clean_old(ip, now):
-    dq = traffic_data[ip]
-    while dq and now - dq[0][1] > TIME_WINDOW:
-        dq.popleft()
-
-# =========================
-# PRUNE STALE IPs
-# =========================
-def prune_stale(now):
-    stale = [ip for ip, dq in traffic_data.items() if not dq]
-    for ip in stale:
-        del traffic_data[ip]
-        alerted_ips.pop(ip, None)
+logger = Logger("data/syn_dataset.jsonl")
 
 # =========================
 # FEATURE EXTRACTION
@@ -77,20 +56,6 @@ def extract_features(ip):
     }
 
 # =========================
-# SEVERITY
-# =========================
-def compute_severity_flood(rate):
-    if rate > SYN_FLOOD_RATE * 4: return "CRITICAL"
-    if rate > SYN_FLOOD_RATE * 2: return "HIGH"
-    return "MEDIUM"
-
-def compute_severity_scan(unique_ports):
-    if unique_ports > 50:  return "CRITICAL"
-    if unique_ports > 20:  return "HIGH"
-    if unique_ports > 10:  return "MEDIUM"
-    return "LOW"
-
-# =========================
 # DETECTION ENGINE
 # =========================
 def detect(packet):
@@ -112,10 +77,10 @@ def detect(packet):
         return
 
     traffic_data[ip_src].append((dport, now))
-    clean_old(ip_src, now)
+    clean_old(traffic_data[ip_src], now, TIME_WINDOW, ts_index=1)
 
     if now - last_prune > PRUNE_INTERVAL:
-        prune_stale(now)
+        prune_stale(traffic_data, alerted_ips)
         last_prune = now
 
     features = extract_features(ip_src)
@@ -124,75 +89,53 @@ def detect(packet):
 
     unique_ports  = features["unique_ports"]
     total_packets = features["total_packets"]
-    duration      = features["duration"]
     pps           = features["pps"]
     port_counts   = features["port_counts"]
 
-    # =========================
-    # LOG EVERY PACKET
-    # =========================
-    log_event({
+    logger.log({
         "timestamp"    : str(datetime.now()),
         "source_ip"    : ip_src,
         "target_ip"    : ip_dst,
         "dport"        : dport,
         "unique_ports" : unique_ports,
         "total_packets": total_packets,
-        "duration"     : duration,
         "pps"          : pps,
-        "label"        : 0    # default normal — attacker sets to 1
+        "label"        : 0
     })
 
-    # =========================
-    # ANTI-SPAM
-    # =========================
     last_alert = alerted_ips.get(ip_src, 0)
     if now - last_alert < ALERT_COOLDOWN:
         return
 
-    # =========================
-    # SYN FLOOD DETECTION
-    # =========================
+    # SYN FLOOD
     for port, count in port_counts.items():
         rate = count / TIME_WINDOW
         if rate > SYN_FLOOD_RATE:
-            severity = compute_severity_flood(rate)
-            alert = {
-                "timestamp"    : str(datetime.now()),
-                "type"         : "SYN_FLOOD",
-                "source_ip"    : ip_src,
-                "target_ip"    : ip_dst,
-                "port"         : port,
-                "rate"         : round(rate, 2),
-                "total_packets": total_packets,
-                "severity"     : severity,
-                "label"        : 1
-            }
-            print(f"🚨 ALERT [SYN_FLOOD] [{severity}] {ip_src} → {ip_dst}:{port} | rate: {rate:.2f} pps")
-            log_event(alert)
+            alert = build_alert(
+                alert_type = "SYN_FLOOD",
+                source_ip  = ip_src,
+                target_ip  = ip_dst,
+                severity   = severity_syn_flood(rate),
+                features   = features,
+                extra      = {"port": port, "rate": round(rate, 2)}
+            )
+            print(f"🚨 ALERT [SYN_FLOOD] [{alert['severity']}] {ip_src} → {ip_dst}:{port} | rate: {rate:.2f} pps")
+            logger.log(alert)
             alerted_ips[ip_src] = now
             traffic_data[ip_src].clear()
             return
 
-    # =========================
-    # SYN SCAN DETECTION
-    # =========================
+    # SYN SCAN
     if unique_ports >= PORT_SCAN_THRESHOLD:
-        severity = compute_severity_scan(unique_ports)
-        alert = {
-            "timestamp"    : str(datetime.now()),
-            "type"         : "SYN_SCAN",
-            "source_ip"    : ip_src,
-            "target_ip"    : ip_dst,
-            "unique_ports" : unique_ports,
-            "total_packets": total_packets,
-            "duration"     : duration,
-            "pps"          : pps,
-            "severity"     : severity,
-            "label"        : 1
-        }
-        print(f"🚨 ALERT [SYN_SCAN] [{severity}] {ip_src} → {ip_dst} | ports: {unique_ports}")
-        log_event(alert)
+        alert = build_alert(
+            alert_type = "SYN_SCAN",
+            source_ip  = ip_src,
+            target_ip  = ip_dst,
+            severity   = severity_syn_scan(unique_ports),
+            features   = features
+        )
+        print(f"🚨 ALERT [SYN_SCAN] [{alert['severity']}] {ip_src} → {ip_dst} | ports: {unique_ports}")
+        logger.log(alert)
         alerted_ips[ip_src] = now
         traffic_data[ip_src].clear()
 

@@ -1,9 +1,11 @@
 from scapy.all import sniff, IP, ICMP, conf
 from collections import defaultdict, deque
 import time
-import json
-import atexit
 from datetime import datetime
+
+from core.logger   import Logger
+from core.window   import clean_old, prune_stale
+from core.alerting import build_alert, severity_icmp
 
 # =========================
 # CONFIG
@@ -13,8 +15,7 @@ ICMP_FLOOD_RATE = 20
 ALERT_COOLDOWN  = 20
 PRUNE_INTERVAL  = 60
 WHITELIST       = {"127.0.0.1"}
-LOG_FILE        = "data/icmp_dataset.jsonl"
-IFACE           = None    # None = auto-detect
+IFACE           = None
 
 # =========================
 # STORAGE
@@ -24,31 +25,9 @@ alerted_ips  = {}
 last_prune   = time.time()
 
 # =========================
-# JSONL LOGGER
+# LOGGER
 # =========================
-log_file = open(LOG_FILE, "a")
-atexit.register(log_file.close)
-
-def log_entry(data):
-    log_file.write(json.dumps(data) + "\n")
-    log_file.flush()
-
-# =========================
-# CLEAN OLD DATA (popleft O(1))
-# =========================
-def clean_old(ip, now):
-    dq = traffic_data[ip]
-    while dq and now - dq[0][0] > TIME_WINDOW:
-        dq.popleft()
-
-# =========================
-# PRUNE STALE IPs
-# =========================
-def prune_stale(now):
-    stale = [ip for ip, dq in traffic_data.items() if not dq]
-    for ip in stale:
-        del traffic_data[ip]
-        alerted_ips.pop(ip, None)
+logger = Logger("data/icmp_dataset.jsonl")
 
 # =========================
 # FEATURE EXTRACTION
@@ -72,15 +51,6 @@ def extract_features(ip):
     }
 
 # =========================
-# SEVERITY
-# =========================
-def compute_severity(pps):
-    if pps > ICMP_FLOOD_RATE * 4: return "CRITICAL"
-    if pps > ICMP_FLOOD_RATE * 2: return "HIGH"
-    if pps > ICMP_FLOOD_RATE:     return "MEDIUM"
-    return "LOW"
-
-# =========================
 # DETECTION ENGINE
 # =========================
 def detect(packet):
@@ -88,7 +58,6 @@ def detect(packet):
 
     if not packet.haslayer(IP) or not packet.haslayer(ICMP):
         return
-
     if packet[ICMP].type != 8:
         return
 
@@ -100,26 +69,23 @@ def detect(packet):
         return
 
     traffic_data[ip_src].append((now, len(packet)))
-    clean_old(ip_src, now)
+    clean_old(traffic_data[ip_src], now, TIME_WINDOW, ts_index=0)
 
     if now - last_prune > PRUNE_INTERVAL:
-        prune_stale(now)
+        prune_stale(traffic_data, alerted_ips)
         last_prune = now
 
     features = extract_features(ip_src)
     if not features:
         return
 
+    pps             = features["pps"]
     total_packets   = features["total_packets"]
     duration        = features["duration"]
-    pps             = features["pps"]
     avg_packet_size = features["avg_packet_size"]
     max_packet_size = features["max_packet_size"]
 
-    # =========================
-    # LOG EVERY PACKET
-    # =========================
-    log_entry({
+    logger.log({
         "timestamp"      : str(datetime.now()),
         "source_ip"      : ip_src,
         "target_ip"      : ip_dst,
@@ -128,36 +94,23 @@ def detect(packet):
         "pps"            : pps,
         "avg_packet_size": avg_packet_size,
         "max_packet_size": max_packet_size,
-        "label"          : 0    # default normal — attacker sets to 1
+        "label"          : 0
     })
 
-    # =========================
-    # ANTI-SPAM
-    # =========================
     last_alert = alerted_ips.get(ip_src, 0)
     if now - last_alert < ALERT_COOLDOWN:
         return
 
-    # =========================
-    # ICMP FLOOD DETECTION
-    # =========================
     if pps > ICMP_FLOOD_RATE:
-        severity = compute_severity(pps)
-        alert = {
-            "timestamp"      : str(datetime.now()),
-            "type"           : "ICMP_FLOOD",
-            "source_ip"      : ip_src,
-            "target_ip"      : ip_dst,
-            "pps"            : pps,
-            "total_packets"  : total_packets,
-            "duration"       : duration,
-            "avg_packet_size": avg_packet_size,
-            "max_packet_size": max_packet_size,
-            "severity"       : severity,
-            "label"          : 1
-        }
-        print(f"🚨 ALERT [ICMP_FLOOD] [{severity}] {ip_src} → {ip_dst} | pps: {pps:.2f}")
-        log_entry(alert)
+        alert = build_alert(
+            alert_type = "ICMP_FLOOD",
+            source_ip  = ip_src,
+            target_ip  = ip_dst,
+            severity   = severity_icmp(pps, ICMP_FLOOD_RATE),
+            features   = features
+        )
+        print(f"🚨 ALERT [ICMP_FLOOD] [{alert['severity']}] {ip_src} → {ip_dst} | pps: {pps:.2f}")
+        logger.log(alert)
         alerted_ips[ip_src] = now
         traffic_data[ip_src].clear()
 

@@ -1,9 +1,11 @@
 import time
-import json
-import atexit
 from collections import defaultdict, deque
 from datetime import datetime
 from scapy.all import sniff, ARP, conf
+
+from core.logger   import Logger
+from core.window   import clean_old, prune_stale
+from core.alerting import build_alert, severity_arp
 
 # ===============================
 # CONFIG
@@ -14,45 +16,21 @@ ALERT_THRESHOLD = 4
 ALERT_COOLDOWN  = 20
 PRUNE_INTERVAL  = 60
 WHITELIST       = {"127.0.0.1"}
-LOG_FILE        = "data/arp_dataset.jsonl"
-IFACE           = None    # None = auto-detect
+IFACE           = None
 
 # ===============================
-# DATA STRUCTURES
+# STORAGE
 # ===============================
 arp_table    = {}
-packet_times = defaultdict(deque)
+packet_times = defaultdict(deque)   # ip → deque[timestamp]
 mac_history  = defaultdict(set)
 alerted_ips  = {}
 last_prune   = time.time()
 
 # ===============================
-# JSONL LOGGER
+# LOGGER
 # ===============================
-log_file = open(LOG_FILE, "a")
-atexit.register(log_file.close)
-
-def log_entry(data):
-    log_file.write(json.dumps(data) + "\n")
-    log_file.flush()
-
-# ===============================
-# CLEAN OLD DATA (popleft O(1))
-# ===============================
-def clean_old(ip, now):
-    dq = packet_times[ip]
-    while dq and now - dq[0] > RATE_WINDOW:
-        dq.popleft()
-
-# ===============================
-# PRUNE STALE IPs
-# ===============================
-def prune_stale(now):
-    stale = [ip for ip, dq in packet_times.items() if not dq]
-    for ip in stale:
-        del packet_times[ip]
-        mac_history.pop(ip, None)
-        alerted_ips.pop(ip, None)
+logger = Logger("data/arp_dataset.jsonl")
 
 # ===============================
 # FEATURE EXTRACTION
@@ -78,14 +56,6 @@ def extract_features(ip, packet):
     }
 
 # ===============================
-# SEVERITY
-# ===============================
-def compute_severity(score):
-    if score >= 9: return "HIGH"
-    if score >= 6: return "MEDIUM"
-    return "LOW"
-
-# ===============================
 # DETECTION ENGINE
 # ===============================
 def detect_arp(packet):
@@ -103,10 +73,10 @@ def detect_arp(packet):
 
     packet_times[ip].append(now)
     mac_history[ip].add(mac)
-    clean_old(ip, now)
+    clean_old(packet_times[ip], now, RATE_WINDOW, ts_index=None)
 
     if now - last_prune > PRUNE_INTERVAL:
-        prune_stale(now)
+        prune_stale(packet_times, mac_history, alerted_ips)
         last_prune = now
 
     features = extract_features(ip, packet)
@@ -121,9 +91,6 @@ def detect_arp(packet):
     hwdst         = features["hwdst"]
     is_broadcast  = features["is_broadcast"]
 
-    # ===============================
-    # SUSPICION SCORING
-    # ===============================
     score = 0
     if mac_changed:           score += 3
     if unique_macs > 2:       score += 2
@@ -131,10 +98,7 @@ def detect_arp(packet):
     if is_gratuitous:         score += 2
     if is_broadcast:          score += 2
 
-    # ===============================
-    # LOG EVERY PACKET
-    # ===============================
-    log_entry({
+    logger.log({
         "timestamp"    : str(datetime.now()),
         "ip"           : ip,
         "mac"          : mac,
@@ -146,37 +110,25 @@ def detect_arp(packet):
         "hwdst"        : hwdst,
         "is_broadcast" : is_broadcast,
         "score"        : score,
-        "label"        : 0    # default normal — attacker sets to 1
+        "label"        : 0
     })
 
-    # ===============================
-    # ANTI-SPAM
-    # ===============================
     last_alert = alerted_ips.get(ip, 0)
     if now - last_alert < ALERT_COOLDOWN:
         arp_table[ip] = mac
         return
 
-    # ===============================
-    # ALERT
-    # ===============================
     if score >= ALERT_THRESHOLD:
-        severity = compute_severity(score)
-        alert = {
-            "timestamp"    : str(datetime.now()),
-            "type"         : "ARP_SPOOFING",
-            "source_ip"    : ip,
-            "source_mac"   : mac,
-            "known_mac"    : known_mac,
-            "hwdst"        : hwdst,
-            "is_gratuitous": bool(is_gratuitous),
-            "is_broadcast" : bool(is_broadcast),
-            "score"        : score,
-            "severity"     : severity,
-            "label"        : 1
-        }
-        print(f"🚨 ALERT [ARP_SPOOFING] [{severity}] {ip} | score: {score}")
-        log_entry(alert)
+        alert = build_alert(
+            alert_type = "ARP_SPOOFING",
+            source_ip  = ip,
+            target_ip  = "N/A",
+            severity   = severity_arp(score),
+            features   = features,
+            extra      = {"source_mac": mac, "score": score}
+        )
+        print(f"🚨 ALERT [ARP_SPOOFING] [{alert['severity']}] {ip} | score: {score}")
+        logger.log(alert)
         alerted_ips[ip] = now
 
     arp_table[ip] = mac
