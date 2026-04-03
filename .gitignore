@@ -1,0 +1,4 @@
+data/*.jsonl
+detectors/__pycache__
+core/__pycache__
+phase1
