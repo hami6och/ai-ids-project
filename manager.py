@@ -1,5 +1,5 @@
 from scapy.all import sniff, conf
-from detectors import syn, arp, icmp, dns, bruteforce
+from detectors import syn, arp, icmp, dns, bruteforce, ftp, dhcp
 
 # =========================
 # IFACE
@@ -15,6 +15,8 @@ def route(packet):
     icmp.detect(packet)
     dns.detect(packet)
     bruteforce.detect(packet)
+    ftp.detect(packet)
+    dhcp.detect(packet)
 
 # =========================
 # START
@@ -22,7 +24,7 @@ def route(packet):
 if __name__ == "__main__":
     iface = IFACE or conf.iface
     print(f"🚀 AI-IDS MANAGER RUNNING on [{iface}]")
-    print("   Detectors: SYN | ARP | ICMP | DNS | BRUTEFORCE")
+    print("   Detectors: SYN | ARP | ICMP | DNS | BRUTEFORCE | FTP | DHCP")
     sniff(
         iface=iface,
         prn=route,

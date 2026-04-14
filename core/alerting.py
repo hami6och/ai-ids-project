@@ -71,3 +71,19 @@ def severity_bruteforce(total_attempts: int) -> str:
     if total_attempts > 40:  return "HIGH"
     if total_attempts > 20:  return "MEDIUM"
     return "LOW"
+
+def severity_ftp(alert_type: str, pps: float, total: int) -> str:
+    if alert_type == "FTP_BOUNCE":
+        return "HIGH"    # bounce is always serious — it abuses your own server
+    if total > 100 or pps > 20: return "CRITICAL"
+    if total > 50  or pps > 10: return "HIGH"
+    if total > 20  or pps > 5:  return "MEDIUM"
+    return "LOW"
+
+def severity_dhcp(alert_type: str, pps: float, unique_macs: int) -> str:
+    if alert_type == "DHCP_ROGUE_SERVER":
+        return "CRITICAL"   # rogue server = full MITM, always critical
+    if pps > 100 or unique_macs > 100: return "CRITICAL"
+    if pps > 50  or unique_macs > 50:  return "HIGH"
+    if pps > 20  or unique_macs > 20:  return "MEDIUM"
+    return "LOW"
