@@ -1,4 +1,6 @@
 data/*.jsonl
+datasets/*.csv
 detectors/__pycache__
 core/__pycache__
+ai/__pycache__
 phase1
