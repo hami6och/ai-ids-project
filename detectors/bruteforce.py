@@ -5,6 +5,7 @@ from datetime import datetime
 
 from core.logger   import Logger
 from core.window   import clean_old, prune_stale
+from ai.predict  import predict as ai_predict
 from core.alerting import build_alert, severity_bruteforce
 
 # =========================
@@ -112,6 +113,14 @@ def detect(packet):
     if not features:
         return
 
+    # =========================
+    # AI PREDICTION
+    # runs alongside rule-based, either can trigger alert
+    # =========================
+    ai_result = ai_predict("bruteforce", features)
+    ai_alert  = ai_result["is_attack"]
+    ai_conf   = ai_result["confidence"]
+
     total_attempts   = features["total_attempts"]
     unique_ports     = features["unique_ports"]
     port_focus_ratio = features["port_focus_ratio"]
@@ -136,16 +145,23 @@ def detect(packet):
     elif total_attempts >= 20 and port_focus_ratio < 0.4:
         alert_type = "CREDENTIAL_STUFFING"
 
+    if not alert_type and ai_alert:
+        alert_type = "BRUTE_FORCE_AI"
+
     if alert_type:
         alert = build_alert(
             alert_type = alert_type,
             source_ip  = src_ip,
             target_ip  = dst_ip,
             severity   = severity_bruteforce(total_attempts),
-            features   = features
+            features   = features,
+            extra      = {"ai_confidence": ai_conf,
+                          "detection": "RULE+AI" if ai_alert else
+                                       "AI_ONLY" if "AI" in alert_type else "RULE"}
         )
-        print(f"🚨 ALERT [{alert['severity']}] [{alert_type}] {src_ip} → {dst_ip} "
-              f"| attempts: {total_attempts} | ports: {unique_ports} | focus: {port_focus_ratio}")
+        detection = alert.get("detection", "RULE")
+        icon = "🔥" if detection == "RULE+AI" else "🤖" if "AI" in detection else "🚨"
+        print(f"{icon} [{detection}] [{alert['severity']}] [{alert_type}] {src_ip} → {dst_ip} | attempts: {total_attempts} | ports: {unique_ports} | focus: {port_focus_ratio}")
         logger.log(alert)
         alerted_ips[src_ip] = now
 

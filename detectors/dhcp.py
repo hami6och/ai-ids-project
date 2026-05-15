@@ -5,6 +5,7 @@ from datetime import datetime
 
 from core.logger   import Logger
 from core.window   import clean_old, prune_stale
+from ai.predict  import predict as ai_predict
 from core.alerting import build_alert, severity_dhcp
 
 # =========================
@@ -21,7 +22,11 @@ STARVATION_MAC_COUNT   = 20     # unique MACs in window
 
 # Rogue server — known legitimate DHCP server IPs on your network
 # IMPORTANT : set this to your actual DHCP server IP before deploying
-LEGITIMATE_DHCP_SERVERS = {"192.168.1.1", "192.168.1.254", "10.0.0.1"}
+LEGITIMATE_DHCP_SERVERS = {
+    "192.168.1.1", "192.168.1.254",
+    "10.0.0.1",
+    "192.168.68.1", "192.168.68.2", "192.168.68.254"   # your lab DHCP servers
+}
 
 # Anomaly detection thresholds
 REPEATED_DECLINE_THRESHOLD  = 5   # DHCP DECLINEs from same MAC = conflict attack
@@ -201,6 +206,14 @@ def detect(packet):
     if not features:
         return
 
+    # =========================
+    # AI PREDICTION
+    # runs alongside rule-based, either can trigger alert
+    # =========================
+    ai_result = ai_predict("dhcp", features)
+    ai_alert  = ai_result["is_attack"]
+    ai_conf   = ai_result["confidence"]
+
     network_mac_count = get_network_mac_count(now)
 
     # =========================
@@ -219,6 +232,21 @@ def detect(packet):
     # =========================
     # DETECTION LOGIC
     # =========================
+
+    # ── AI CHECK — fires if any rule or AI flags it ─────────
+    if ai_alert and now - alerted_macs.get(src_mac, 0) > ALERT_COOLDOWN:
+        alert = build_alert(
+            alert_type = "DHCP_AI",
+            source_ip  = src_ip,
+            target_ip  = "255.255.255.255",
+            severity   = "MEDIUM",
+            features   = features,
+            extra      = {"src_mac": src_mac, "ai_confidence": ai_conf,
+                          "detection": "AI_ONLY"}
+        )
+        print(f"🤖 AI ALERT [DHCP_AI] {src_mac} | confidence: {ai_conf:.0%}")
+        logger.log(alert)
+        alerted_macs[src_mac] = now
 
     # ── Rule 1 : DHCP STARVATION ──────────────────────────
     # Classic starvation : flood of DISCOVERs with spoofed MACs
@@ -249,9 +277,9 @@ def detect(packet):
                 "trigger"          : "per_mac" if starvation_per_mac else "network_wide"
             }
         )
-        print(f"🚨 ALERT [{severity}] [DHCP_STARVATION] "
-              f"{src_mac} | pps: {pps:.2f} "
-              f"| network MACs: {network_mac_count}")
+        detection = alert.get("detection", "RULE")
+        icon = "🔥" if detection == "RULE+AI" else "🤖" if "AI" in detection else "🚨"
+        print(f"{icon} [{detection}] [{severity}] [DHCP_STARVATION] {src_mac} | pps: {pps:.2f} | network MACs: {network_mac_count}")
         logger.log(alert)
         alerted_macs[src_mac] = now
 
@@ -274,9 +302,9 @@ def detect(packet):
                     "first_seen" : str(datetime.fromtimestamp(server_seen.get(src_ip, now)))
                 }
             )
-            print(f"🚨 ALERT [CRITICAL] [DHCP_ROGUE_SERVER] "
-                  f"Unknown server {src_ip} ({src_mac}) sending OFFERs "
-                  f"| offers: {offer_count}")
+            detection = alert.get("detection", "RULE")
+            icon = "🔥" if detection == "RULE+AI" else "🤖" if "AI" in detection else "🚨"
+            print(f"{icon} [{detection}] [CRITICAL] [DHCP_ROGUE_SERVER] Unknown server {src_ip} ({src_mac}) sending OFFERs | offers: {offer_count}")
             logger.log(alert)
             alerted_ips[src_ip] = now
 
@@ -295,8 +323,9 @@ def detect(packet):
             features   = features,
             extra      = {"src_mac": src_mac, "decline_count": decline_count}
         )
-        print(f"🚨 ALERT [{alert['severity']}] [DHCP_DECLINE_FLOOD] "
-              f"{src_mac} | declines: {decline_count}")
+        detection = alert.get("detection", "RULE")
+        icon = "🔥" if detection == "RULE+AI" else "🤖" if "AI" in detection else "🚨"
+        print(f"{icon} [{detection}] [{alert['severity']}] [DHCP_DECLINE_FLOOD] {src_mac} | declines: {decline_count}")
         logger.log(alert)
         alerted_macs[src_mac] = now
 
@@ -321,8 +350,9 @@ def detect(packet):
                 "discover_count": discover_count
             }
         )
-        print(f"🚨 ALERT [{alert['severity']}] [DHCP_RAPID_CYCLING] "
-              f"{src_mac} | releases: {release_count} discovers: {discover_count}")
+        detection = alert.get("detection", "RULE")
+        icon = "🔥" if detection == "RULE+AI" else "🤖" if "AI" in detection else "🚨"
+        print(f"{icon} [{detection}] [{alert['severity']}] [DHCP_RAPID_CYCLING] {src_mac} | releases: {release_count} discovers: {discover_count}")
         logger.log(alert)
         alerted_macs[src_mac] = now
 

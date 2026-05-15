@@ -5,6 +5,7 @@ from datetime import datetime
 
 from core.logger   import Logger
 from core.window   import clean_old, prune_stale
+from ai.predict  import predict as ai_predict
 from core.alerting import build_alert, severity_syn_flood, severity_syn_scan
 
 # =========================
@@ -87,6 +88,14 @@ def detect(packet):
     if not features:
         return
 
+    # =========================
+    # AI PREDICTION
+    # runs alongside rule-based, either can trigger alert
+    # =========================
+    ai_result = ai_predict("syn", features)
+    ai_alert  = ai_result["is_attack"]
+    ai_conf   = ai_result["confidence"]
+
     unique_ports  = features["unique_ports"]
     total_packets = features["total_packets"]
     pps           = features["pps"]
@@ -108,33 +117,43 @@ def detect(packet):
         return
 
     # SYN FLOOD
+    # fires if rule threshold crossed OR AI is confident
     for port, count in port_counts.items():
         rate = count / TIME_WINDOW
-        if rate > SYN_FLOOD_RATE:
+        if rate > SYN_FLOOD_RATE or (ai_alert and count == max(port_counts.values())):
             alert = build_alert(
                 alert_type = "SYN_FLOOD",
                 source_ip  = ip_src,
                 target_ip  = ip_dst,
                 severity   = severity_syn_flood(rate),
                 features   = features,
-                extra      = {"port": port, "rate": round(rate, 2)}
+                extra      = {"port": port, "rate": round(rate, 2),
+                              "ai_confidence": ai_conf,
+                              "detection": "RULE+AI" if ai_alert else "RULE"}
             )
-            print(f"🚨 ALERT [SYN_FLOOD] [{alert['severity']}] {ip_src} → {ip_dst}:{port} | rate: {rate:.2f} pps")
+            detection = alert.get("detection", "RULE")
+            icon = "🔥" if detection == "RULE+AI" else "🤖" if "AI" in detection else "🚨"
+            print(f"{icon} [{detection}] [SYN_FLOOD] [{alert['severity']}] {ip_src} → {ip_dst}:{port} | rate: {rate:.2f} pps")
             logger.log(alert)
             alerted_ips[ip_src] = now
             traffic_data[ip_src].clear()
             return
 
     # SYN SCAN
-    if unique_ports >= PORT_SCAN_THRESHOLD:
+    if unique_ports >= PORT_SCAN_THRESHOLD or ai_alert:
         alert = build_alert(
             alert_type = "SYN_SCAN",
             source_ip  = ip_src,
             target_ip  = ip_dst,
             severity   = severity_syn_scan(unique_ports),
-            features   = features
+            features   = features,
+            extra      = {"ai_confidence": ai_conf,
+                          "detection": "RULE+AI" if ai_alert else
+                                       "AI_ONLY" if ai_alert else "RULE"}
         )
-        print(f"🚨 ALERT [SYN_SCAN] [{alert['severity']}] {ip_src} → {ip_dst} | ports: {unique_ports}")
+        detection = alert.get("detection", "RULE")
+        icon = "🔥" if detection == "RULE+AI" else "🤖" if "AI" in detection else "🚨"
+        print(f"{icon} [{detection}] [SYN_SCAN] [{alert['severity']}] {ip_src} → {ip_dst} | ports: {unique_ports}")
         logger.log(alert)
         alerted_ips[ip_src] = now
         traffic_data[ip_src].clear()

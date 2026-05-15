@@ -5,6 +5,7 @@ from datetime import datetime
 
 from core.logger   import Logger
 from core.window   import clean_old, prune_stale
+from ai.predict  import predict as ai_predict
 from core.alerting import build_alert, severity_dns
 
 # =========================
@@ -98,6 +99,10 @@ def detect(packet):
         return
     if packet[DNS].qr != 0:
         return
+    # ignore multicast destinations — mDNS traffic (224.x.x.x, 239.x.x.x)
+    # generates long domain names like _googlecast._tcp.local that look like tunnels
+    if ip_dst.startswith(("224.", "239.", "255.")):
+        return
 
     if packet.haslayer(DNSQR):
         qname     = packet[DNSQR].qname.decode(errors="ignore").rstrip(".")
@@ -117,6 +122,19 @@ def detect(packet):
     if not features:
         return
 
+    # =========================
+    # AI PREDICTION
+    # minimum 5 requests required before AI runs
+    # a single DNS query has too little context for a confident prediction
+    # =========================
+    if features["total_requests"] >= 5:
+        ai_result = ai_predict("dns", features)
+        ai_alert  = ai_result["is_attack"]
+        ai_conf   = ai_result["confidence"]
+    else:
+        ai_alert = False
+        ai_conf  = 0.0
+
     logger.log({
         "timestamp" : str(datetime.now()),
         "source_ip" : ip_src,
@@ -132,10 +150,13 @@ def detect(packet):
         return
 
     alert_type = None
-    if features["avg_qname_len"] > 50:
+    if features["avg_qname_len"] > 80:
         alert_type = "DNS_TUNNEL"
     elif features["total_requests"] >= REQUEST_THRESHOLD:
         alert_type = "DNS_FLOOD"
+
+    if not alert_type and ai_alert:
+        alert_type = "DNS_AI"
 
     if alert_type:
         alert = build_alert(
@@ -143,11 +164,14 @@ def detect(packet):
             source_ip  = ip_src,
             target_ip  = ip_dst,
             severity   = severity_dns(features["total_requests"], features["pps"]),
-            features   = features
+            features   = features,
+            extra      = {"ai_confidence": ai_conf,
+                          "detection": "RULE+AI" if ai_alert else
+                                       "AI_ONLY" if alert_type == "DNS_AI" else "RULE"}
         )
-        print(f"🚨 ALERT [{alert['severity']}] [{alert_type}] {ip_src} → {ip_dst} "
-              f"| {features['total_requests']} req | pps: {features['pps']} "
-              f"| avg_len: {features['avg_qname_len']}")
+        detection = alert.get("detection", "RULE")
+        icon = "🔥" if detection == "RULE+AI" else "🤖" if "AI" in detection else "🚨"
+        print(f"{icon} [{detection}] [{alert['severity']}] [{alert_type}] {ip_src} → {ip_dst} | {features['total_requests']} req | pps: {features['pps']} | avg_len: {features['avg_qname_len']}")
         logger.log(alert)
         alerted_ips[ip_src] = now
 

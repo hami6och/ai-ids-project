@@ -5,6 +5,7 @@ from datetime import datetime
 
 from core.logger   import Logger
 from core.window   import clean_old, prune_stale
+from ai.predict  import predict as ai_predict
 from core.alerting import build_alert, severity_icmp
 
 # =========================
@@ -79,11 +80,25 @@ def detect(packet):
     if not features:
         return
 
+    # extract features first — then use them for AI check
     pps             = features["pps"]
     total_packets   = features["total_packets"]
     duration        = features["duration"]
     avg_packet_size = features["avg_packet_size"]
     max_packet_size = features["max_packet_size"]
+
+    # =========================
+    # AI PREDICTION
+    # minimum 10 packets required — prevents AI from firing
+    # on normal pings which have too few packets for a confident prediction
+    # =========================
+    if total_packets >= 10:
+        ai_result = ai_predict("icmp", features)
+        ai_alert  = ai_result["is_attack"]
+        ai_conf   = ai_result["confidence"]
+    else:
+        ai_alert = False
+        ai_conf  = 0.0
 
     logger.log({
         "timestamp"      : str(datetime.now()),
@@ -101,15 +116,20 @@ def detect(packet):
     if now - last_alert < ALERT_COOLDOWN:
         return
 
-    if pps > ICMP_FLOOD_RATE:
+    if pps > ICMP_FLOOD_RATE or ai_alert:
         alert = build_alert(
             alert_type = "ICMP_FLOOD",
             source_ip  = ip_src,
             target_ip  = ip_dst,
             severity   = severity_icmp(pps, ICMP_FLOOD_RATE),
-            features   = features
+            features   = features,
+            extra      = {"ai_confidence": ai_conf,
+                          "detection": "RULE+AI" if (pps > ICMP_FLOOD_RATE and ai_alert)
+                                       else "AI_ONLY" if ai_alert else "RULE"}
         )
-        print(f"🚨 ALERT [ICMP_FLOOD] [{alert['severity']}] {ip_src} → {ip_dst} | pps: {pps:.2f}")
+        detection = alert.get("detection", "RULE")
+        icon = "🔥" if detection == "RULE+AI" else "🤖" if "AI" in detection else "🚨"
+        print(f"{icon} [{detection}] [ICMP_FLOOD] [{alert['severity']}] {ip_src} → {ip_dst} | pps: {pps:.2f}")
         logger.log(alert)
         alerted_ips[ip_src] = now
         traffic_data[ip_src].clear()

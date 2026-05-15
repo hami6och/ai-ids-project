@@ -5,6 +5,7 @@ from scapy.all import sniff, ARP, conf
 
 from core.logger   import Logger
 from core.window   import clean_old, prune_stale
+from ai.predict  import predict as ai_predict
 from core.alerting import build_alert, severity_arp
 
 # ===============================
@@ -13,7 +14,7 @@ from core.alerting import build_alert, severity_arp
 RATE_WINDOW              = 10
 RATE_THRESHOLD           = 5
 NETWORK_RATE_THRESHOLD   = 50    # total ARP replies/sec across ALL IPs
-ALERT_THRESHOLD          = 4
+ALERT_THRESHOLD          = 8    # needs mac_changed + 2 other signals to alert
 ALERT_COOLDOWN           = 20
 PRUNE_INTERVAL           = 60
 WHITELIST                = {"127.0.0.1"}
@@ -108,6 +109,14 @@ def detect_arp(packet):
     if not features:
         return
 
+    # =========================
+    # AI PREDICTION
+    # runs alongside rule-based, either can trigger alert
+    # =========================
+    ai_result = ai_predict("arp", features)
+    ai_alert  = ai_result["is_attack"]
+    ai_conf   = ai_result["confidence"]
+
     mac_changed      = features["mac_changed"]
     known_mac        = features["known_mac"]
     rate             = features["packet_rate"]
@@ -152,7 +161,7 @@ def detect_arp(packet):
         arp_table[ip] = mac
         return
 
-    if score >= ALERT_THRESHOLD:
+    if score >= ALERT_THRESHOLD or ai_alert:
         severity = severity_arp(score)
         alert = build_alert(
             alert_type = "ARP_SPOOFING",
@@ -160,10 +169,14 @@ def detect_arp(packet):
             target_ip  = "N/A",
             severity   = severity,
             features   = features,
-            extra      = {"source_mac": mac, "score": score}
+            extra      = {"source_mac": mac, "score": score,
+                          "ai_confidence": ai_conf,
+                          "detection": "RULE+AI" if ai_alert else
+                                       "AI_ONLY" if ai_alert else "RULE"}
         )
-        print(f"🚨 ALERT [ARP_SPOOFING] [{severity}] {ip} | score: {score} "
-              f"| net_rate: {network_arp_rate:.1f}/s")
+        detection = alert.get("detection", "RULE")
+        icon = "🔥" if detection == "RULE+AI" else "🤖" if "AI" in detection else "🚨"
+        print(f"{icon} [{detection}] [ARP_SPOOFING] [{severity}] {ip} | score: {score} | net_rate: {network_arp_rate:.1f}/s")
         logger.log(alert)
         alerted_ips[ip] = now
 

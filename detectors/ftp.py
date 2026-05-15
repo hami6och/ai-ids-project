@@ -5,6 +5,7 @@ from datetime import datetime
 
 from core.logger   import Logger
 from core.window   import clean_old, prune_stale
+from ai.predict  import predict as ai_predict
 from core.alerting import build_alert, severity_ftp
 
 # =========================
@@ -165,6 +166,11 @@ def detect(packet):
         if not features:
             return
 
+        # AI prediction for brute force path
+        ai_result = ai_predict("ftp", features)
+        ai_alert  = ai_result["is_attack"]
+        ai_conf   = ai_result["confidence"]
+
         logger.log({
             "timestamp"  : str(datetime.now()),
             "source_ip"  : src_ip,
@@ -182,7 +188,7 @@ def detect(packet):
         syn_r   = features["syn_ratio"]
         pps     = features["pps"]
 
-        if total >= ATTEMPT_THRESHOLD and syn_r > 0.6:
+        if (total >= ATTEMPT_THRESHOLD and syn_r > 0.6) or ai_alert:
             alert = build_alert(
                 alert_type = "FTP_BRUTE_FORCE",
                 source_ip  = src_ip,
@@ -224,6 +230,11 @@ def detect(packet):
             if not features:
                 return
 
+            # AI prediction for bounce path
+            ai_result = ai_predict("ftp", features)
+            ai_alert  = ai_result["is_attack"]
+            ai_conf   = ai_result["confidence"]
+
             logger.log({
                 "timestamp"     : str(datetime.now()),
                 "source_ip"     : src_ip,
@@ -239,7 +250,7 @@ def detect(packet):
             if now - last_alert < ALERT_COOLDOWN:
                 return
 
-            if features["third_party_targets"] >= BOUNCE_THRESHOLD:
+            if features["third_party_targets"] >= BOUNCE_THRESHOLD or ai_alert:
                 alert = build_alert(
                     alert_type = "FTP_BOUNCE",
                     source_ip  = src_ip,
@@ -251,9 +262,9 @@ def detect(packet):
                         "bounce_port"  : target_port
                     }
                 )
-                print(f"🚨 ALERT [{alert['severity']}] [FTP_BOUNCE] "
-                      f"{src_ip} using FTP server to scan {target_ip}:{target_port} "
-                      f"| PORT cmds: {features['total_port_cmds']}")
+                detection = alert.get("detection", "RULE")
+                icon = "🔥" if detection == "RULE+AI" else "🤖" if "AI" in detection else "🚨"
+                print(f"{icon} [{detection}] [{alert['severity']}] [FTP_BOUNCE] {src_ip} using FTP server to scan {target_ip}:{target_port} | PORT cmds: {features['total_port_cmds']}")
                 logger.log(alert)
                 alerted_ips[src_ip] = now
 

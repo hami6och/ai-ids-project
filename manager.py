@@ -1,5 +1,6 @@
 from scapy.all import sniff, conf
 from detectors import syn, arp, icmp, dns, bruteforce, ftp, dhcp
+from ai.predict  import preload_all
 
 # =========================
 # IFACE
@@ -25,6 +26,7 @@ if __name__ == "__main__":
     iface = IFACE or conf.iface
     print(f"🚀 AI-IDS MANAGER RUNNING on [{iface}]")
     print("   Detectors: SYN | ARP | ICMP | DNS | BRUTEFORCE | FTP | DHCP")
+    preload_all()   # load all ML models into memory before sniffing
     sniff(
         iface=iface,
         prn=route,
