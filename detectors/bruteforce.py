@@ -9,6 +9,7 @@ from ai.predict  import predict as ai_predict
 from core.alerting import build_alert, severity_bruteforce
 from core.persistence import state_bruteforce
 from core.correlation import correlator
+from core.distributed import tracker as dist_tracker
 
 # =========================
 # CONFIG
@@ -108,6 +109,7 @@ def detect(packet):
 
     attempts[src_ip].append((dport, now, flags))
     clean_old(attempts[src_ip], now, TIME_WINDOW, ts_index=1)
+    dist_tracker.add(dst_ip, src_ip, "BRUTE")
     state_bruteforce.maybe_save(now)
 
     if now - last_prune > PRUNE_INTERVAL:

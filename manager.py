@@ -19,6 +19,7 @@ from core.persistence import save_all
 from core.correlation import correlator
 from core.logger      import Logger
 from core.worker      import enqueue, start_worker, stop_worker, get_stats
+from core.distributed import tracker as dist_tracker
 
 # =========================
 # CONFIG
@@ -75,8 +76,9 @@ if __name__ == "__main__":
     campaign_logger = Logger("data/campaigns.jsonl")
     correlator.set_logger(campaign_logger)
 
-    # save state on clean exit
-    #atexit.register(save_all)
+    # set distributed attack logger
+    dist_logger = Logger("data/distributed.jsonl")
+    dist_tracker.set_logger(dist_logger)
 
     # register signal handlers for graceful shutdown
     signal.signal(signal.SIGINT,  shutdown)

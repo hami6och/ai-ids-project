@@ -9,6 +9,7 @@ from ai.predict  import predict as ai_predict
 from core.alerting import build_alert, severity_icmp
 from core.persistence import state_icmp
 from core.correlation import correlator
+from core.distributed import tracker as dist_tracker
 
 # =========================
 # CONFIG
@@ -75,6 +76,7 @@ def detect(packet):
 
     traffic_data[ip_src].append((now, len(packet)))
     clean_old(traffic_data[ip_src], now, TIME_WINDOW, ts_index=0)
+    dist_tracker.add(ip_dst, ip_src, "ICMP")
     state_icmp.maybe_save(now)
 
     if now - last_prune > PRUNE_INTERVAL:

@@ -9,6 +9,7 @@ from ai.predict  import predict as ai_predict
 from core.alerting import build_alert, severity_syn_flood, severity_syn_scan
 from core.persistence import state_syn
 from core.correlation import correlator
+from core.distributed import tracker as dist_tracker
 
 # =========================
 # CONFIG
@@ -83,6 +84,7 @@ def detect(packet):
 
     traffic_data[ip_src].append((dport, now))
     clean_old(traffic_data[ip_src], now, TIME_WINDOW, ts_index=1)
+    dist_tracker.add(ip_dst, ip_src, "SYN")
     state_syn.maybe_save(now)
 
     if now - last_prune > PRUNE_INTERVAL:
