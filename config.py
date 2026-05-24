@@ -173,3 +173,10 @@ LW_BRUTE_COOLDOWN       = 600
 LW_DNS_WINDOW           = 300    # seconds — slow DNS flood window
 LW_DNS_THRESHOLD        = 40     # requests in window → slow DNS alert
 LW_DNS_COOLDOWN         = 300
+
+# =========================
+# MULTI-SOURCE BRUTE FORCE (MAC spoofing evasion)
+# =========================
+MULTI_SOURCE_WINDOW     = 60     # seconds — track per-dst-port window
+MULTI_SOURCE_THRESHOLD  = 8      # unique source IPs to same port → alert
+MULTI_SOURCE_COOLDOWN   = 120    # seconds between alerts per dst port

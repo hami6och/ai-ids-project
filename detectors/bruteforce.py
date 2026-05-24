@@ -9,6 +9,7 @@ from ai.predict  import predict as ai_predict
 from core.alerting import build_alert, severity_bruteforce
 from core.persistence import state_bruteforce
 from config import (
+    MULTI_SOURCE_WINDOW, MULTI_SOURCE_THRESHOLD, MULTI_SOURCE_COOLDOWN,
     BRUTE_TIME_WINDOW as TIME_WINDOW,
     BRUTE_ATTEMPT_THRESHOLD as ATTEMPT_THRESHOLD,
     BRUTE_ALERT_COOLDOWN as ALERT_COOLDOWN,
@@ -30,6 +31,10 @@ from core.distributed import tracker as dist_tracker
 # STORAGE
 # =========================
 attempts    = defaultdict(deque)   # ip → [(port, timestamp, flags)]
+# per-destination-port tracking — catches MAC-rotating brute force
+# key = (dst_ip, dst_port), value = deque of (timestamp, src_ip)
+dst_port_sources = defaultdict(deque)
+dst_port_alerted = {}    # (dst_ip, dst_port) → last alert timestamp
 alerted_ips = {}
 last_prune  = time.time()
 
@@ -113,6 +118,14 @@ def detect(packet):
 
     attempts[src_ip].append((dport, now, flags))
     clean_old(attempts[src_ip], now, TIME_WINDOW, ts_index=1)
+
+    # track per-destination-port sources for MAC-spoof detection
+    dst_key = (dst_ip, dport)
+    dst_port_sources[dst_key].append((now, src_ip))
+    # evict old entries
+    dq_dst = dst_port_sources[dst_key]
+    while dq_dst and now - dq_dst[0][0] > MULTI_SOURCE_WINDOW:
+        dq_dst.popleft()
     dist_tracker.add(dst_ip, src_ip, "BRUTE")
     lw_brute.add(src_ip, value=(dport, now), now=now)
     state_bruteforce.maybe_save(now)
@@ -151,6 +164,35 @@ def detect(packet):
         "label"     : 0,
         **features
     })
+
+    # MULTI-SOURCE BRUTE FORCE — MAC spoofing evasion detection
+    dst_key         = (dst_ip, dport)
+    dq_dst          = dst_port_sources.get(dst_key, deque())
+    unique_sources  = len({src for _, src in dq_dst})
+    last_dst_alert  = dst_port_alerted.get(dst_key, 0)
+
+    if unique_sources >= MULTI_SOURCE_THRESHOLD and        now - last_dst_alert > MULTI_SOURCE_COOLDOWN:
+
+        sample_sources = list({src for _, src in dq_dst})[:5]
+        alert = build_alert(
+            alert_type = "MULTI_SOURCE_BRUTE",
+            source_ip  = src_ip,
+            target_ip  = dst_ip,
+            severity   = "HIGH",
+            features   = features,
+            extra      = {
+                "target_port"    : dport,
+                "unique_sources" : unique_sources,
+                "sample_sources" : sample_sources,
+                "window_sec"     : MULTI_SOURCE_WINDOW,
+                "detection"      : "RULE"
+            }
+        )
+        print(f"🚨 [RULE] [MULTI_SOURCE_BRUTE] [HIGH] {unique_sources} sources → "
+              f"{dst_ip}:{dport} | sample: {sample_sources[:3]}")
+        logger.log(alert)
+        correlator.add_alert(src_ip, "MULTI_SOURCE_BRUTE", "HIGH", dst_ip)
+        dst_port_alerted[dst_key] = now
 
     # SLOW BRUTE FORCE — long window check
     if lw_brute.should_alert(src_ip, now):
