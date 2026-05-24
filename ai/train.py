@@ -179,16 +179,36 @@ def train_detector(detector: str) -> dict:
 
     print(f"\n  ✅ Model saved → {model_path}")
 
+    # count own JSONL rows if they exist — used by retrain.py for data growth tracking
+    from pathlib import Path as _Path
+    own_files = {
+        "syn": "data/syn_dataset.jsonl", "arp": "data/arp_dataset.jsonl",
+        "icmp": "data/icmp_dataset.jsonl", "dns": "data/dns_logs.jsonl",
+        "bruteforce": "data/bruteforce_logs.jsonl",
+        "dhcp": "data/dhcp_dataset.jsonl", "ftp": "data/ftp_dataset.jsonl"
+    }
+    own_path = own_files.get(detector, "")
+    own_rows = 0
+    if own_path and _Path(own_path).exists():
+        try:
+            with open(own_path) as _f:
+                own_rows = sum(1 for l in _f if l.strip())
+        except Exception:
+            own_rows = 0
+
+    from datetime import datetime as _dt
     return {
-        "detector"    : detector,
-        "status"      : "trained",
-        "rows"        : len(df),
-        "precision"   : round(precision, 4),
-        "recall"      : round(recall, 4),
-        "f1"          : round(f1, 4),
-        "confusion_matrix": cm,
+        "detector"          : detector,
+        "status"            : "trained",
+        "rows"              : len(df),
+        "own_rows_at_train" : own_rows,
+        "trained_at"        : str(_dt.now()),
+        "precision"         : round(precision, 4),
+        "recall"            : round(recall, 4),
+        "f1"                : round(f1, 4),
+        "confusion_matrix"  : cm,
         "feature_importance": importance_sorted,
-        "model_path"  : str(model_path)
+        "model_path"        : str(model_path)
     }
 
 # =========================
