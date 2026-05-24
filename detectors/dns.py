@@ -76,11 +76,17 @@ def extract_features(ip):
 
     avg_qname_len = sum(len(q) for q in qnames) / len(qnames)
 
+    # interval regularity — low std = machine-like fixed timing = suspicious
+    interval_std = round(
+        (sum((i - avg_interval)**2 for i in intervals) / max(len(intervals), 1)) ** 0.5, 4
+    ) if intervals else 0.0
+
     return {
         "total_requests"        : len(data),
         "duration"              : round(duration, 3),
         "pps"                   : round(len(data) / max(duration, 1), 3),
         "avg_interval"          : round(avg_interval, 4),
+        "interval_std"          : interval_std,
         "unique_domains"        : unique_domains,
         "domain_diversity_ratio": round(domain_diversity_ratio, 3),
         "top_domain"            : top_domain,

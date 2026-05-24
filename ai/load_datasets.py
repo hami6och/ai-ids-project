@@ -18,7 +18,7 @@ FEATURES = {
     ],
     "bruteforce": [
         "pps", "duration", "total_attempts",
-        "avg_interval", "syn_ratio",
+        "avg_interval", "interval_std", "syn_ratio",
         "port_focus_ratio", "unique_ports"
     ],
     "arp": [
@@ -29,7 +29,7 @@ FEATURES = {
         "pps", "duration", "total_requests",
         "avg_interval", "unique_domains",
         "domain_diversity_ratio", "avg_qname_len",
-        "top_domain_ratio"
+        "top_domain_ratio", "interval_std"
     ],
     "dhcp": [
         "pps", "duration", "total_requests",
@@ -37,7 +37,7 @@ FEATURES = {
     ],
     "ftp": [
         "pps", "duration", "total_attempts",
-        "avg_interval", "syn_ratio",
+        "avg_interval", "interval_std", "syn_ratio",
         "port_focus_ratio", "unique_ports"
     ]
 }
@@ -493,7 +493,7 @@ def load_dns_kaggle(filepath: str) -> pd.DataFrame:
     df["pps"]           = 0.0
     df["duration"]      = 0.0
     df["avg_interval"]  = 0.0
-    df["unique_qtypes"] = 0
+    df["interval_std"]  = 0.0   # no timing data in Kaggle dataset
 
     feature_cols = FEATURES.get("dns", [])
     for col in feature_cols:

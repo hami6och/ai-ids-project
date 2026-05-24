@@ -81,12 +81,18 @@ def extract_features(ip):
     syn_count = sum(1 for f in flags if "S" in f and "A" not in f)
     syn_ratio = syn_count / len(flags)
 
+    # interval regularity — machine tools send at fixed intervals
+    interval_std = round(
+        (sum((i - avg_interval)**2 for i in intervals) / max(len(intervals), 1)) ** 0.5, 4
+    ) if intervals else 0.0
+
     return {
         "total_attempts"  : len(data),
         "unique_ports"    : len(set(ports)),
         "duration"        : round(duration, 3),
         "pps"             : round(len(data) / max(duration, 1), 3),
         "avg_interval"    : round(avg_interval, 4),
+        "interval_std"    : interval_std,
         "port_focus_ratio": round(port_focus_ratio, 3),
         "syn_ratio"       : round(syn_ratio, 3),
         "port_counts"     : dict(port_counts)
