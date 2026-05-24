@@ -11,7 +11,7 @@ This separation prevents packet drops under heavy attack traffic.
 import signal
 import sys
 import atexit
-from scapy.all import sniff, conf
+from scapy.all import sniff, conf, IPSession
 
 from detectors        import syn, arp, icmp, dns, bruteforce, ftp, dhcp
 from ai.predict       import preload_all
@@ -92,5 +92,6 @@ if __name__ == "__main__":
     sniff(
         iface=iface,
         prn=enqueue,   # ultra fast — just puts packet in queue
+        session=IPSession,  # reassemble fragmented packets before processing
         store=0
     )
