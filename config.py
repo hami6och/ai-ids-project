@@ -158,3 +158,18 @@ THREAT_FEED_ENABLED     = False  # set True after adding API key below
 ABUSEIPDB_API_KEY       = ""     # get free key at https://www.abuseipdb.com
                                   # free tier: 1000 queries/day
                                   # with caching: well within limits
+
+# =========================
+# LONG WINDOW — SLOW ATTACK DETECTION
+# =========================
+LW_SYN_WINDOW           = 600    # seconds — slow scan tracking window
+LW_SYN_THRESHOLD        = 10     # unique ports in window → slow scan alert
+LW_SYN_COOLDOWN         = 600
+
+LW_BRUTE_WINDOW         = 600    # seconds — slow brute force window
+LW_BRUTE_THRESHOLD      = 20     # attempts in window → slow brute alert
+LW_BRUTE_COOLDOWN       = 600
+
+LW_DNS_WINDOW           = 300    # seconds — slow DNS flood window
+LW_DNS_THRESHOLD        = 40     # requests in window → slow DNS alert
+LW_DNS_COOLDOWN         = 300

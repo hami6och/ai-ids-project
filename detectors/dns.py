@@ -19,6 +19,7 @@ from config import (
     IFACE
 )
 from core.correlation import correlator
+from core.long_window  import lw_dns
 from core.distributed import tracker as dist_tracker
 
 # =========================
@@ -122,6 +123,7 @@ def detect(packet):
     dns_requests[ip_src].append((now, qname, qtype_str))
     clean_old(dns_requests[ip_src], now, TIME_WINDOW, ts_index=0)
     dist_tracker.add(ip_dst, ip_src, "DNS")
+    lw_dns.add(ip_src, value=qname, now=now)
     state_dns.maybe_save(now)
 
     if now - last_prune > PRUNE_INTERVAL:
@@ -154,6 +156,24 @@ def detect(packet):
         "label"     : 0,
         **features
     })
+
+    # SLOW DNS FLOOD — long window check
+    if lw_dns.should_alert(ip_src, now):
+        summary = lw_dns.get_summary(ip_src)
+        alert = build_alert(
+            alert_type = "SLOW_DNS_FLOOD",
+            source_ip  = ip_src,
+            target_ip  = ip_dst,
+            severity   = "LOW",
+            features   = features,
+            extra      = {**summary, "detection": "RULE"}
+        )
+        print(f"🐢 [SLOW] [SLOW_DNS_FLOOD] [LOW] {ip_src} → {ip_dst} | "
+              f"requests: {summary.get('unique_requests', 0)} in {summary.get('timespan_sec', 0)}s")
+        logger.log(alert)
+        correlator.add_alert(ip_src, "SLOW_DNS_FLOOD", "LOW", ip_dst)
+        alerted_ips[ip_src] = now
+        lw_dns.clear(ip_src)
 
     last_alert = alerted_ips.get(ip_src, 0)
     if now - last_alert < ALERT_COOLDOWN:

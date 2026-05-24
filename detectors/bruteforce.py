@@ -19,6 +19,7 @@ from config import (
     IFACE
 )
 from core.correlation import correlator
+from core.long_window  import lw_brute
 from core.distributed import tracker as dist_tracker
 
 # =========================
@@ -113,6 +114,7 @@ def detect(packet):
     attempts[src_ip].append((dport, now, flags))
     clean_old(attempts[src_ip], now, TIME_WINDOW, ts_index=1)
     dist_tracker.add(dst_ip, src_ip, "BRUTE")
+    lw_brute.add(src_ip, value=(dport, now), now=now)
     state_bruteforce.maybe_save(now)
 
     if now - last_prune > PRUNE_INTERVAL:
@@ -149,6 +151,24 @@ def detect(packet):
         "label"     : 0,
         **features
     })
+
+    # SLOW BRUTE FORCE — long window check
+    if lw_brute.should_alert(src_ip, now):
+        summary = lw_brute.get_summary(src_ip)
+        alert = build_alert(
+            alert_type = "SLOW_BRUTE_FORCE",
+            source_ip  = src_ip,
+            target_ip  = dst_ip,
+            severity   = "MEDIUM",
+            features   = features,
+            extra      = {**summary, "detection": "RULE"}
+        )
+        print(f"🐢 [SLOW] [SLOW_BRUTE_FORCE] [MEDIUM] {src_ip} → {dst_ip} | "
+              f"attempts: {summary.get('unique_attempts', 0)} in {summary.get('timespan_sec', 0)}s")
+        logger.log(alert)
+        correlator.add_alert(src_ip, "SLOW_BRUTE_FORCE", "MEDIUM", dst_ip)
+        alerted_ips[src_ip] = now
+        lw_brute.clear(src_ip)
 
     last_alert = alerted_ips.get(src_ip, 0)
     if now - last_alert < ALERT_COOLDOWN:

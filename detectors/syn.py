@@ -18,6 +18,7 @@ from config import (
     IFACE
 )
 from core.correlation import correlator
+from core.long_window  import lw_syn
 from core.distributed import tracker as dist_tracker
 
 # =========================
@@ -87,6 +88,7 @@ def detect(packet):
     traffic_data[ip_src].append((dport, now))
     clean_old(traffic_data[ip_src], now, TIME_WINDOW, ts_index=1)
     dist_tracker.add(ip_dst, ip_src, "SYN")
+    lw_syn.add(ip_src, value=dport, now=now)
     state_syn.maybe_save(now)
 
     if now - last_prune > PRUNE_INTERVAL:
@@ -154,7 +156,25 @@ def detect(packet):
             traffic_data[ip_src].clear()
             return
 
-    # SYN SCAN
+    # SLOW SYN SCAN — long window check
+    if lw_syn.should_alert(ip_src, now):
+        summary = lw_syn.get_summary(ip_src)
+        alert = build_alert(
+            alert_type = "SLOW_SYN_SCAN",
+            source_ip  = ip_src,
+            target_ip  = ip_dst,
+            severity   = "MEDIUM",
+            features   = features,
+            extra      = {**summary, "detection": "RULE"}
+        )
+        print(f"🐢 [SLOW] [SLOW_SYN_SCAN] [MEDIUM] {ip_src} → {ip_dst} | "
+              f"ports: {summary.get('unique_ports', 0)} in {summary.get('timespan_sec', 0)}s")
+        logger.log(alert)
+        correlator.add_alert(ip_src, "SLOW_SYN_SCAN", "MEDIUM", ip_dst)
+        alerted_ips[ip_src] = now
+        lw_syn.clear(ip_src)
+
+    # SYN SCAN — short window
     if unique_ports >= PORT_SCAN_THRESHOLD or ai_alert:
         alert = build_alert(
             alert_type = "SYN_SCAN",
