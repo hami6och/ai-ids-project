@@ -20,12 +20,14 @@ Standalone check :
 
 import pickle
 from pathlib import Path
+import sys, os
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+from config import AI_THRESHOLD, MODELS_DIR as _MODELS_DIR
 
 # =========================
 # CONFIG
 # =========================
-MODELS_DIR   = Path("ai/models")
-AI_THRESHOLD = 0.80    # confidence required to flag as attack
+MODELS_DIR   = Path(_MODELS_DIR)    # confidence required to flag as attack
                        # raise to 0.90 to reduce false positives
                        # lower to 0.70 to catch more attacks
 

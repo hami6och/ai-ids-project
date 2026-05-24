@@ -29,17 +29,17 @@ from datetime import datetime
 # =========================
 # CONFIG
 # =========================
-DIST_WINDOW          = 30     # seconds — sliding window per dst IP
-DIST_SRC_THRESHOLD   = 10     # unique source IPs hitting same dst to alert
-DIST_COOLDOWN        = 120    # seconds between distributed alerts per dst IP
-
-# per attack type thresholds — some need fewer sources to be suspicious
+from config import (
+    DIST_WINDOW, DIST_COOLDOWN,
+    DIST_SYN_THRESHOLD, DIST_ICMP_THRESHOLD,
+    DIST_DNS_THRESHOLD, DIST_BRUTE_THRESHOLD
+)
 THRESHOLDS = {
-    "SYN"        : 10,
-    "ICMP"       : 8,
-    "DNS"        : 8,
-    "BRUTE"      : 5,    # fewer needed — brute force from 5 IPs is already suspicious
-    "DEFAULT"    : 10,
+    "SYN"    : DIST_SYN_THRESHOLD,
+    "ICMP"   : DIST_ICMP_THRESHOLD,
+    "DNS"    : DIST_DNS_THRESHOLD,
+    "BRUTE"  : DIST_BRUTE_THRESHOLD,
+    "DEFAULT": DIST_SYN_THRESHOLD,
 }
 
 

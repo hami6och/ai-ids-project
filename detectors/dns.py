@@ -8,18 +8,22 @@ from core.window   import clean_old, prune_stale
 from ai.predict  import predict as ai_predict
 from core.alerting import build_alert, severity_dns
 from core.persistence import state_dns
+from config import (
+    DNS_TIME_WINDOW as TIME_WINDOW,
+    DNS_REQUEST_THRESHOLD as REQUEST_THRESHOLD,
+    DNS_TUNNEL_QNAME_LEN,
+    DNS_ALERT_COOLDOWN as ALERT_COOLDOWN,
+    DNS_PRUNE_INTERVAL as PRUNE_INTERVAL,
+    DNS_AI_MIN_REQUESTS,
+    WHITELIST,
+    IFACE
+)
 from core.correlation import correlator
 from core.distributed import tracker as dist_tracker
 
 # =========================
 # CONFIG
 # =========================
-TIME_WINDOW       = 5
-REQUEST_THRESHOLD = 20
-ALERT_COOLDOWN    = 20
-PRUNE_INTERVAL    = 60
-WHITELIST         = {"127.0.0.1"}
-IFACE             = None
 
 QTYPE_MAP = {
     1: "A", 2: "NS", 5: "CNAME", 15: "MX",
@@ -133,7 +137,7 @@ def detect(packet):
     # minimum 5 requests required before AI runs
     # a single DNS query has too little context for a confident prediction
     # =========================
-    if features["total_requests"] >= 5:
+    if features["total_requests"] >= DNS_AI_MIN_REQUESTS:
         ai_result = ai_predict("dns", features)
         ai_alert  = ai_result["is_attack"]
         ai_conf   = ai_result["confidence"]
@@ -156,7 +160,7 @@ def detect(packet):
         return
 
     alert_type = None
-    if features["avg_qname_len"] > 80:
+    if features["avg_qname_len"] > DNS_TUNNEL_QNAME_LEN:
         alert_type = "DNS_TUNNEL"
     elif features["total_requests"] >= REQUEST_THRESHOLD:
         alert_type = "DNS_FLOOD"

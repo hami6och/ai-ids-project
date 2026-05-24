@@ -24,8 +24,7 @@ from collections import defaultdict
 # =========================
 # CONFIG
 # =========================
-QUEUE_SIZE   = 10000   # max packets in queue before dropping
-WORKER_COUNT = 1       # single worker — detectors share global state
+from config import QUEUE_SIZE, WORKER_COUNT
                        # increase only after class-based refactor
 
 # =========================

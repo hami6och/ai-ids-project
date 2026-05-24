@@ -8,32 +8,31 @@ from core.window   import clean_old, prune_stale
 from ai.predict  import predict as ai_predict
 from core.alerting import build_alert, severity_dhcp
 from core.persistence import state_dhcp
+from config import (
+    DHCP_TIME_WINDOW as TIME_WINDOW,
+    DHCP_ALERT_COOLDOWN as ALERT_COOLDOWN,
+    DHCP_PRUNE_INTERVAL as PRUNE_INTERVAL,
+    DHCP_STARVATION_PPS as STARVATION_PPS,
+    DHCP_STARVATION_MACS as STARVATION_MAC_COUNT,
+    DHCP_DECLINE_THRESHOLD as REPEATED_DECLINE_THRESHOLD,
+    DHCP_RELEASE_THRESHOLD as RAPID_RELEASE_THRESHOLD,
+    DHCP_LEGITIMATE_SERVERS as LEGITIMATE_DHCP_SERVERS,
+    IFACE
+)
 from core.correlation import correlator
 
 # =========================
 # CONFIG
 # =========================
-TIME_WINDOW            = 10
-ALERT_COOLDOWN         = 20
-PRUNE_INTERVAL         = 60
 IFACE                  = None
 
 # Starvation thresholds
-STARVATION_PPS         = 10     # DISCOVER packets/sec
-STARVATION_MAC_COUNT   = 20     # unique MACs in window
 
 # Rogue server — known legitimate DHCP server IPs on your network
 # IMPORTANT : set this to your actual DHCP server IP before deploying
-LEGITIMATE_DHCP_SERVERS = {
-    "192.168.1.1", "192.168.1.254",
-    "10.0.0.1",
-    "192.168.68.1", "192.168.68.2", "192.168.68.254"   # your lab DHCP servers
-}
+
 
 # Anomaly detection thresholds
-REPEATED_DECLINE_THRESHOLD  = 5   # DHCP DECLINEs from same MAC = conflict attack
-RAPID_RELEASE_THRESHOLD     = 8   # rapid RELEASE+DISCOVER cycles = starvation variant
-OFFER_RATIO_THRESHOLD       = 0.3 # unexpected OFFERs ratio = rogue server signal
 
 # =========================
 # STORAGE

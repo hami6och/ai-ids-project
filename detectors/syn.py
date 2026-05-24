@@ -8,19 +8,21 @@ from core.window   import clean_old, prune_stale
 from ai.predict  import predict as ai_predict
 from core.alerting import build_alert, severity_syn_flood, severity_syn_scan
 from core.persistence import state_syn
+from config import (
+    SYN_TIME_WINDOW as TIME_WINDOW,
+    SYN_FLOOD_RATE, PORT_SCAN_THRESHOLD,
+    SYN_ALERT_COOLDOWN as ALERT_COOLDOWN,
+    SYN_PRUNE_INTERVAL as PRUNE_INTERVAL,
+    SYN_AI_MIN_PACKETS,
+    WHITELIST,
+    IFACE
+)
 from core.correlation import correlator
 from core.distributed import tracker as dist_tracker
 
 # =========================
 # CONFIG
 # =========================
-TIME_WINDOW         = 5
-PORT_SCAN_THRESHOLD = 5
-SYN_FLOOD_RATE      = 10
-ALERT_COOLDOWN      = 20
-PRUNE_INTERVAL      = 60
-WHITELIST           = {"127.0.0.1"}
-IFACE               = None
 
 # =========================
 # STORAGE
@@ -105,7 +107,7 @@ def detect(packet):
     # minimum 8 packets required — SYN scan needs enough ports
     # to distinguish from normal browsing (3-4 connections)
     # =========================
-    if total_packets >= 8:
+    if total_packets >= SYN_AI_MIN_PACKETS:
         ai_result = ai_predict("syn", features)
         ai_alert  = ai_result["is_attack"]
         ai_conf   = ai_result["confidence"]

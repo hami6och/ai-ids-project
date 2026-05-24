@@ -29,9 +29,7 @@ from datetime import datetime
 # =========================
 # CONFIG
 # =========================
-CORRELATION_WINDOW    = 120    # seconds — track alerts within this window
-CORRELATION_THRESHOLD = 2      # min distinct detector types to fire campaign alert
-CAMPAIGN_COOLDOWN     = 300    # seconds between campaign alerts for same IP
+from config import CORRELATION_WINDOW, CORRELATION_THRESHOLD, CAMPAIGN_COOLDOWN
 
 # =========================
 # CAMPAIGN SEVERITY LOGIC

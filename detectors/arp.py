@@ -8,19 +8,22 @@ from core.window      import clean_old, prune_stale
 from ai.predict       import predict as ai_predict
 from core.alerting    import build_alert, severity_arp
 from core.persistence import state_arp
+from config import (
+    ARP_RATE_WINDOW as RATE_WINDOW,
+    ARP_RATE_THRESHOLD as RATE_THRESHOLD,
+    ARP_NETWORK_RATE_THRESH as NETWORK_RATE_THRESHOLD,
+    ARP_ALERT_THRESHOLD as ALERT_THRESHOLD,
+    ARP_ALERT_COOLDOWN as ALERT_COOLDOWN,
+    ARP_PRUNE_INTERVAL as PRUNE_INTERVAL,
+    WHITELIST,
+    IFACE
+)
 from core.correlation import correlator
 
 # ===============================
 # CONFIG
 # ===============================
-RATE_WINDOW              = 10
-RATE_THRESHOLD           = 5
-NETWORK_RATE_THRESHOLD   = 50
 ALERT_THRESHOLD          = 8
-ALERT_COOLDOWN           = 20
-PRUNE_INTERVAL           = 60
-WHITELIST                = {"127.0.0.1"}
-IFACE                    = None
 
 # ===============================
 # STORAGE

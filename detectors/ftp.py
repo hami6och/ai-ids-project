@@ -8,21 +8,25 @@ from core.window   import clean_old, prune_stale
 from ai.predict  import predict as ai_predict
 from core.alerting import build_alert, severity_ftp
 from core.persistence import state_ftp
+from config import (
+    FTP_TIME_WINDOW as TIME_WINDOW,
+    FTP_ATTEMPT_THRESHOLD as ATTEMPT_THRESHOLD,
+    FTP_BOUNCE_THRESHOLD as BOUNCE_THRESHOLD,
+    FTP_ALERT_COOLDOWN as ALERT_COOLDOWN,
+    FTP_PRUNE_INTERVAL as PRUNE_INTERVAL,
+    FTP_AI_MIN_ATTEMPTS,
+    FTP_AI_MIN_PORT_CMDS,
+    WHITELIST,
+    IFACE
+)
 from core.correlation import correlator
 
 # =========================
 # CONFIG
 # =========================
-TIME_WINDOW        = 10
-ATTEMPT_THRESHOLD  = 10     # brute force threshold
-ALERT_COOLDOWN     = 20
-PRUNE_INTERVAL     = 60
-WHITELIST          = {"127.0.0.1"}
-IFACE              = None
 
 # FTP bounce — PORT command pointing to a third-party IP
 # is the core signal of an FTP bounce attack
-BOUNCE_THRESHOLD   = 3      # nb of suspicious PORT commands to alert
 
 # =========================
 # STORAGE
@@ -173,7 +177,7 @@ def detect(packet):
 
         # AI prediction for brute force path
         # minimum 8 attempts before AI runs
-        if features.get("total_attempts", 0) >= 8:
+        if features.get("total_attempts", 0) >= FTP_AI_MIN_ATTEMPTS:
             ai_result = ai_predict("ftp", features)
             ai_alert  = ai_result["is_attack"]
             ai_conf   = ai_result["confidence"]
@@ -244,7 +248,7 @@ def detect(packet):
 
             # AI prediction for bounce path
             # minimum 3 PORT commands before AI runs
-            if features.get("total_port_cmds", 0) >= 3:
+            if features.get("total_port_cmds", 0) >= FTP_AI_MIN_PORT_CMDS:
                 ai_result = ai_predict("ftp", features)
                 ai_alert  = ai_result["is_attack"]
                 ai_conf   = ai_result["confidence"]

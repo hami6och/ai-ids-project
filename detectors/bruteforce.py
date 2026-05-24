@@ -8,19 +8,22 @@ from core.window   import clean_old, prune_stale
 from ai.predict  import predict as ai_predict
 from core.alerting import build_alert, severity_bruteforce
 from core.persistence import state_bruteforce
+from config import (
+    BRUTE_TIME_WINDOW as TIME_WINDOW,
+    BRUTE_ATTEMPT_THRESHOLD as ATTEMPT_THRESHOLD,
+    BRUTE_ALERT_COOLDOWN as ALERT_COOLDOWN,
+    BRUTE_PRUNE_INTERVAL as PRUNE_INTERVAL,
+    BRUTE_TARGET_PORTS as TARGET_PORTS,
+    BRUTE_AI_MIN_ATTEMPTS,
+    WHITELIST,
+    IFACE
+)
 from core.correlation import correlator
 from core.distributed import tracker as dist_tracker
 
 # =========================
 # CONFIG
 # =========================
-TIME_WINDOW       = 10
-ATTEMPT_THRESHOLD = 15
-ALERT_COOLDOWN    = 20
-PRUNE_INTERVAL    = 60
-TARGET_PORTS      = {22, 21, 23}
-WHITELIST         = {"127.0.0.1"}
-IFACE             = None
 
 # =========================
 # STORAGE
@@ -125,7 +128,7 @@ def detect(packet):
     # minimum 8 attempts required before AI runs
     # fewer attempts may just be normal connection behavior
     # =========================
-    if features.get("total_attempts", 0) >= 8:
+    if features.get("total_attempts", 0) >= BRUTE_AI_MIN_ATTEMPTS:
         ai_result = ai_predict("bruteforce", features)
         ai_alert  = ai_result["is_attack"]
         ai_conf   = ai_result["confidence"]

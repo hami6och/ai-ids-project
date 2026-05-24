@@ -32,8 +32,7 @@ from pathlib import Path
 # =========================
 # CONFIG
 # =========================
-STATE_DIR     = "data/.state"        # hidden dir inside data/
-SAVE_INTERVAL = 60                   # save state every 60 seconds
+from config import STATE_DIR, SAVE_INTERVAL
 
 
 class StateManager:

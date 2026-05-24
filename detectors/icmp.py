@@ -8,18 +8,20 @@ from core.window   import clean_old, prune_stale
 from ai.predict  import predict as ai_predict
 from core.alerting import build_alert, severity_icmp
 from core.persistence import state_icmp
+from config import (
+    ICMP_TIME_WINDOW as TIME_WINDOW,
+    ICMP_FLOOD_RATE, ICMP_ALERT_COOLDOWN as ALERT_COOLDOWN,
+    ICMP_PRUNE_INTERVAL as PRUNE_INTERVAL,
+    ICMP_AI_MIN_PACKETS,
+    WHITELIST,
+    IFACE
+)
 from core.correlation import correlator
 from core.distributed import tracker as dist_tracker
 
 # =========================
 # CONFIG
 # =========================
-TIME_WINDOW     = 5
-ICMP_FLOOD_RATE = 20
-ALERT_COOLDOWN  = 20
-PRUNE_INTERVAL  = 60
-WHITELIST       = {"127.0.0.1"}
-IFACE           = None
 
 # =========================
 # STORAGE
@@ -100,7 +102,7 @@ def detect(packet):
     # minimum 10 packets required — prevents AI from firing
     # on normal pings which have too few packets for a confident prediction
     # =========================
-    if total_packets >= 10:
+    if total_packets >= ICMP_AI_MIN_PACKETS:
         ai_result = ai_predict("icmp", features)
         ai_alert  = ai_result["is_attack"]
         ai_conf   = ai_result["confidence"]
