@@ -1,4 +1,4 @@
-from scapy.all import sniff, IP, TCP, conf
+from scapy.all import sniff, IP, IPv6, TCP, conf
 from collections import defaultdict, deque
 import time
 from datetime import datetime
@@ -67,15 +67,15 @@ def extract_features(ip):
 def detect(packet):
     global last_prune
 
-    if not packet.haslayer(IP) or not packet.haslayer(TCP):
+    if not (packet.haslayer(IP) or packet.haslayer(IPv6)) or not packet.haslayer(TCP):
         return
 
     flags = packet[TCP].flags
     if not (flags & 0x02 and not flags & 0x10):
         return
 
-    ip_src = packet[IP].src
-    ip_dst = packet[IP].dst
+    ip_src = (packet[IPv6].src if packet.haslayer(IPv6) else packet[IP].src)
+    ip_dst = (packet[IPv6].dst if packet.haslayer(IPv6) else packet[IP].dst)
     dport  = packet[TCP].dport
     now    = time.time()
 

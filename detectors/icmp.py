@@ -1,4 +1,4 @@
-from scapy.all import sniff, IP, ICMP, conf
+from scapy.all import sniff, IP, IPv6, ICMP, ICMPv6EchoRequest, conf
 from collections import defaultdict, deque
 import time
 from datetime import datetime
@@ -62,13 +62,14 @@ def extract_features(ip):
 def detect(packet):
     global last_prune
 
-    if not packet.haslayer(IP) or not packet.haslayer(ICMP):
-        return
-    if packet[ICMP].type != 8:
+    # support both ICMPv4 (echo request type=8) and ICMPv6 echo request
+    is_ipv4 = packet.haslayer(IP) and packet.haslayer(ICMP) and packet[ICMP].type == 8
+    is_ipv6 = packet.haslayer(IPv6) and packet.haslayer(ICMPv6EchoRequest)
+    if not (is_ipv4 or is_ipv6):
         return
 
-    ip_src = packet[IP].src
-    ip_dst = packet[IP].dst
+    ip_src = (packet[IPv6].src if packet.haslayer(IPv6) else packet[IP].src)
+    ip_dst = (packet[IPv6].dst if packet.haslayer(IPv6) else packet[IP].dst)
     now    = time.time()
 
     if ip_src in WHITELIST:

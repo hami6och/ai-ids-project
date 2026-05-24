@@ -67,6 +67,7 @@ if __name__ == "__main__":
 
     print(f"🚀 AI-IDS MANAGER RUNNING on [{iface}]")
     print(f"   Detectors : SYN | ARP | ICMP | DNS | BRUTEFORCE | FTP | DHCP")
+    print(f"   IPv6      : supported (rule-based only, no AI for IPv6)")
     print(f"   Mode      : producer/consumer queue (no packet drops)")
 
     # load AI models into memory before sniffing

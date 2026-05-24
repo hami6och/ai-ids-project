@@ -1,4 +1,4 @@
-from scapy.all import sniff, IP, TCP, Raw, conf
+from scapy.all import sniff, IP, IPv6, TCP, Raw, conf
 from collections import defaultdict, deque
 import time
 from datetime import datetime
@@ -139,11 +139,11 @@ def clean_all(ip: str, now: float):
 def detect(packet):
     global last_prune
 
-    if not packet.haslayer(IP) or not packet.haslayer(TCP):
+    if not (packet.haslayer(IP) or packet.haslayer(IPv6)) or not packet.haslayer(TCP):
         return
 
-    src_ip = packet[IP].src
-    dst_ip = packet[IP].dst
+    src_ip = (packet[IPv6].src if packet.haslayer(IPv6) else packet[IP].src)
+    dst_ip = (packet[IPv6].dst if packet.haslayer(IPv6) else packet[IP].dst)
     dport  = packet[TCP].dport
     sport  = packet[TCP].sport
     flags  = str(packet[TCP].flags)
@@ -206,9 +206,8 @@ def detect(packet):
                 severity   = severity_ftp("FTP_BRUTE_FORCE", pps, total),
                 features   = features
             )
-            detection = alert.get("detection", "RULE")
-            icon = "🔥" if detection == "RULE+AI" else "🤖" if "AI" in detection else "🚨"
-            print(f"{icon} [{detection}] [{alert['severity']}] [FTP_BRUTE_FORCE] {src_ip} → {dst_ip} | attempts: {total} | syn_ratio: {syn_r}")
+            print(f"🚨 ALERT [{alert['severity']}] [FTP_BRUTE_FORCE] "
+                  f"{src_ip} → {dst_ip} | attempts: {total} | syn_ratio: {syn_r}")
             logger.log(alert)
             correlator.add_alert(src_ip, "FTP_BRUTE_FORCE", alert["severity"], dst_ip)
             alerted_ips[src_ip] = now

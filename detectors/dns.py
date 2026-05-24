@@ -1,4 +1,4 @@
-from scapy.all import sniff, IP, UDP, DNS, DNSQR, conf
+from scapy.all import sniff, IP, IPv6, UDP, DNS, DNSQR, conf
 from collections import defaultdict, deque
 import time
 from datetime import datetime
@@ -90,13 +90,13 @@ def extract_features(ip):
 def detect(packet):
     global last_prune
 
-    if not packet.haslayer(IP) or not packet.haslayer(UDP):
+    if not (packet.haslayer(IP) or packet.haslayer(IPv6)) or not packet.haslayer(UDP):
         return
     if not packet.haslayer(DNS):
         return
 
-    ip_src = packet[IP].src
-    ip_dst = packet[IP].dst
+    ip_src = (packet[IPv6].src if packet.haslayer(IPv6) else packet[IP].src)
+    ip_dst = (packet[IPv6].dst if packet.haslayer(IPv6) else packet[IP].dst)
     now    = time.time()
 
     if ip_src in WHITELIST:
