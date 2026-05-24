@@ -7,6 +7,7 @@ from core.logger   import Logger
 from core.window   import clean_old, prune_stale
 from ai.predict  import predict as ai_predict
 from core.alerting import build_alert, severity_icmp
+from core.persistence import state_icmp
 
 # =========================
 # CONFIG
@@ -29,6 +30,8 @@ last_prune   = time.time()
 # LOGGER
 # =========================
 logger = Logger("data/icmp_dataset.jsonl")
+state_icmp.register(traffic_data, alerted_ips)
+state_icmp.restore()
 
 # =========================
 # FEATURE EXTRACTION
@@ -71,6 +74,7 @@ def detect(packet):
 
     traffic_data[ip_src].append((now, len(packet)))
     clean_old(traffic_data[ip_src], now, TIME_WINDOW, ts_index=0)
+    state_icmp.maybe_save(now)
 
     if now - last_prune > PRUNE_INTERVAL:
         prune_stale(traffic_data, alerted_ips)

@@ -7,6 +7,7 @@ from core.logger   import Logger
 from core.window   import clean_old, prune_stale
 from ai.predict  import predict as ai_predict
 from core.alerting import build_alert, severity_bruteforce
+from core.persistence import state_bruteforce
 
 # =========================
 # CONFIG
@@ -30,6 +31,8 @@ last_prune  = time.time()
 # LOGGER
 # =========================
 logger = Logger("data/bruteforce_logs.jsonl")
+state_bruteforce.register(attempts, alerted_ips)
+state_bruteforce.restore()
 
 # =========================
 # PRIVATE IP CHECK
@@ -104,6 +107,7 @@ def detect(packet):
 
     attempts[src_ip].append((dport, now, flags))
     clean_old(attempts[src_ip], now, TIME_WINDOW, ts_index=1)
+    state_bruteforce.maybe_save(now)
 
     if now - last_prune > PRUNE_INTERVAL:
         prune_stale(attempts, alerted_ips)
@@ -115,11 +119,16 @@ def detect(packet):
 
     # =========================
     # AI PREDICTION
-    # runs alongside rule-based, either can trigger alert
+    # minimum 8 attempts required before AI runs
+    # fewer attempts may just be normal connection behavior
     # =========================
-    ai_result = ai_predict("bruteforce", features)
-    ai_alert  = ai_result["is_attack"]
-    ai_conf   = ai_result["confidence"]
+    if features.get("total_attempts", 0) >= 8:
+        ai_result = ai_predict("bruteforce", features)
+        ai_alert  = ai_result["is_attack"]
+        ai_conf   = ai_result["confidence"]
+    else:
+        ai_alert = False
+        ai_conf  = 0.0
 
     total_attempts   = features["total_attempts"]
     unique_ports     = features["unique_ports"]

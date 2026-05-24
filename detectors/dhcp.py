@@ -7,6 +7,7 @@ from core.logger   import Logger
 from core.window   import clean_old, prune_stale
 from ai.predict  import predict as ai_predict
 from core.alerting import build_alert, severity_dhcp
+from core.persistence import state_dhcp
 
 # =========================
 # CONFIG
@@ -67,6 +68,8 @@ DHCP_TYPES = {
 # LOGGER
 # =========================
 logger = Logger("data/dhcp_dataset.jsonl")
+state_dhcp.register(mac_requests, mac_declines, mac_releases, server_seen, alerted_macs, alerted_ips)
+state_dhcp.restore()
 
 # =========================
 # DHCP MESSAGE TYPE EXTRACTOR
@@ -197,6 +200,7 @@ def detect(packet):
         clean_old(server_offers[src_ip], now, TIME_WINDOW, ts_index=None)
 
     clean_all(src_mac, now)
+    state_dhcp.maybe_save(now)
 
     if now - last_prune > PRUNE_INTERVAL:
         prune_all(now)

@@ -7,6 +7,7 @@ from core.logger   import Logger
 from core.window   import clean_old, prune_stale
 from ai.predict  import predict as ai_predict
 from core.alerting import build_alert, severity_ftp
+from core.persistence import state_ftp
 
 # =========================
 # CONFIG
@@ -38,6 +39,8 @@ last_prune   = time.time()
 # LOGGER
 # =========================
 logger = Logger("data/ftp_dataset.jsonl")
+state_ftp.register(attempts, bounce_cmds, alerted_ips)
+state_ftp.restore()
 
 # =========================
 # PRIVATE IP CHECK
@@ -157,6 +160,7 @@ def detect(packet):
     if dport == 21 and is_private(dst_ip):
         attempts[src_ip].append((now, flags))
         clean_old(attempts[src_ip], now, TIME_WINDOW, ts_index=0)
+        state_ftp.maybe_save(now)
 
         if now - last_prune > PRUNE_INTERVAL:
             prune_stale(attempts, bounce_cmds, alerted_ips)
@@ -167,9 +171,14 @@ def detect(packet):
             return
 
         # AI prediction for brute force path
-        ai_result = ai_predict("ftp", features)
-        ai_alert  = ai_result["is_attack"]
-        ai_conf   = ai_result["confidence"]
+        # minimum 8 attempts before AI runs
+        if features.get("total_attempts", 0) >= 8:
+            ai_result = ai_predict("ftp", features)
+            ai_alert  = ai_result["is_attack"]
+            ai_conf   = ai_result["confidence"]
+        else:
+            ai_alert = False
+            ai_conf  = 0.0
 
         logger.log({
             "timestamp"  : str(datetime.now()),
@@ -225,15 +234,21 @@ def detect(packet):
         if target_ip != src_ip:
             bounce_cmds[src_ip].append((now, target_ip))
             clean_old(bounce_cmds[src_ip], now, TIME_WINDOW, ts_index=0)
+            state_ftp.maybe_save(now)
 
             features = extract_features_bounce(src_ip)
             if not features:
                 return
 
             # AI prediction for bounce path
-            ai_result = ai_predict("ftp", features)
-            ai_alert  = ai_result["is_attack"]
-            ai_conf   = ai_result["confidence"]
+            # minimum 3 PORT commands before AI runs
+            if features.get("total_port_cmds", 0) >= 3:
+                ai_result = ai_predict("ftp", features)
+                ai_alert  = ai_result["is_attack"]
+                ai_conf   = ai_result["confidence"]
+            else:
+                ai_alert = False
+                ai_conf  = 0.0
 
             logger.log({
                 "timestamp"     : str(datetime.now()),

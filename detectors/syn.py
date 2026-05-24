@@ -7,6 +7,7 @@ from core.logger   import Logger
 from core.window   import clean_old, prune_stale
 from ai.predict  import predict as ai_predict
 from core.alerting import build_alert, severity_syn_flood, severity_syn_scan
+from core.persistence import state_syn
 
 # =========================
 # CONFIG
@@ -30,6 +31,8 @@ last_prune   = time.time()
 # LOGGER
 # =========================
 logger = Logger("data/syn_dataset.jsonl")
+state_syn.register(traffic_data, alerted_ips)
+state_syn.restore()
 
 # =========================
 # FEATURE EXTRACTION
@@ -79,6 +82,7 @@ def detect(packet):
 
     traffic_data[ip_src].append((dport, now))
     clean_old(traffic_data[ip_src], now, TIME_WINDOW, ts_index=1)
+    state_syn.maybe_save(now)
 
     if now - last_prune > PRUNE_INTERVAL:
         prune_stale(traffic_data, alerted_ips)
@@ -88,18 +92,23 @@ def detect(packet):
     if not features:
         return
 
-    # =========================
-    # AI PREDICTION
-    # runs alongside rule-based, either can trigger alert
-    # =========================
-    ai_result = ai_predict("syn", features)
-    ai_alert  = ai_result["is_attack"]
-    ai_conf   = ai_result["confidence"]
-
     unique_ports  = features["unique_ports"]
     total_packets = features["total_packets"]
     pps           = features["pps"]
     port_counts   = features["port_counts"]
+
+    # =========================
+    # AI PREDICTION
+    # minimum 8 packets required — SYN scan needs enough ports
+    # to distinguish from normal browsing (3-4 connections)
+    # =========================
+    if total_packets >= 8:
+        ai_result = ai_predict("syn", features)
+        ai_alert  = ai_result["is_attack"]
+        ai_conf   = ai_result["confidence"]
+    else:
+        ai_alert = False
+        ai_conf  = 0.0
 
     logger.log({
         "timestamp"    : str(datetime.now()),

@@ -7,6 +7,7 @@ from core.logger   import Logger
 from core.window   import clean_old, prune_stale
 from ai.predict  import predict as ai_predict
 from core.alerting import build_alert, severity_dns
+from core.persistence import state_dns
 
 # =========================
 # CONFIG
@@ -34,6 +35,8 @@ last_prune   = time.time()
 # LOGGER
 # =========================
 logger = Logger("data/dns_logs.jsonl")
+state_dns.register(dns_requests, alerted_ips)
+state_dns.restore()
 
 # =========================
 # FEATURE EXTRACTION
@@ -113,6 +116,7 @@ def detect(packet):
 
     dns_requests[ip_src].append((now, qname, qtype_str))
     clean_old(dns_requests[ip_src], now, TIME_WINDOW, ts_index=0)
+    state_dns.maybe_save(now)
 
     if now - last_prune > PRUNE_INTERVAL:
         prune_stale(dns_requests, alerted_ips)
