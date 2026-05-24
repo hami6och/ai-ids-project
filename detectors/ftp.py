@@ -206,11 +206,9 @@ def detect(packet):
                 severity   = severity_ftp("FTP_BRUTE_FORCE", pps, total),
                 features   = features
             )
-            
             detection = alert.get("detection", "RULE")
             icon = "🔥" if detection == "RULE+AI" else "🤖" if "AI" in detection else "🚨"
             print(f"{icon} [{detection}] [{alert['severity']}] [FTP_BRUTE_FORCE] {src_ip} → {dst_ip} | attempts: {total} | syn_ratio: {syn_r}")
-
             logger.log(alert)
             correlator.add_alert(src_ip, "FTP_BRUTE_FORCE", alert["severity"], dst_ip)
             alerted_ips[src_ip] = now

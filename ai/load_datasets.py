@@ -29,7 +29,7 @@ FEATURES = {
         "pps", "duration", "total_requests",
         "avg_interval", "unique_domains",
         "domain_diversity_ratio", "avg_qname_len",
-        "top_domain_ratio", "unique_qtypes"
+        "top_domain_ratio"
     ],
     "dhcp": [
         "pps", "duration", "total_requests",

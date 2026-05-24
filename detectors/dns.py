@@ -80,7 +80,6 @@ def extract_features(ip):
         "domain_diversity_ratio": round(domain_diversity_ratio, 3),
         "top_domain"            : top_domain,
         "top_domain_ratio"      : round(top_domain_ratio, 3),
-        "unique_qtypes"         : len(set(qtypes)),
         "type_counts"           : dict(type_counts),
         "avg_qname_len"         : round(avg_qname_len, 2),
     }
