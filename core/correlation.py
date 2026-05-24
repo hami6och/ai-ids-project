@@ -86,6 +86,13 @@ class CorrelationEngine:
 
         if len(recent_types) >= CORRELATION_THRESHOLD:
             self._maybe_fire_campaign(src_ip, recent_types, dq, now)
+        else:
+            # enrich single alert with threat feed even before campaign fires
+            try:
+                from core.threat_feed import threat_feed
+                threat_feed.check_async(src_ip)
+            except Exception:
+                pass
 
     def _maybe_fire_campaign(self, src_ip: str, alert_types: list,
                               dq: deque, now: float):
@@ -125,6 +132,13 @@ class CorrelationEngine:
         # log to JSONL
         if self._campaign_log:
             self._campaign_log.log(campaign)
+
+        # enrich with threat intelligence
+        try:
+            from core.threat_feed import threat_feed
+            threat_feed.check_async(src_ip, "ATTACK_CAMPAIGN", severity)
+        except Exception:
+            pass
 
     def get_history(self, src_ip: str) -> list:
         """Return recent alert history for an IP — useful for dashboard."""

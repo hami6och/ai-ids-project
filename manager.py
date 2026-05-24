@@ -20,6 +20,8 @@ from core.correlation import correlator
 from core.logger      import Logger
 from core.worker      import enqueue, start_worker, stop_worker, get_stats
 from core.distributed import tracker as dist_tracker
+from core.threat_feed  import threat_feed
+from config            import THREAT_FEED_ENABLED, ABUSEIPDB_API_KEY
 
 # =========================
 # CONFIG
@@ -80,6 +82,10 @@ if __name__ == "__main__":
     # set distributed attack logger
     dist_logger = Logger("data/distributed.jsonl")
     dist_tracker.set_logger(dist_logger)
+
+    # configure threat feed enrichment
+    threat_feed.configure(ABUSEIPDB_API_KEY, THREAT_FEED_ENABLED)
+    threat_feed.set_logger(Logger("data/threat_feed.jsonl"))
 
     # register signal handlers for graceful shutdown
     signal.signal(signal.SIGINT,  shutdown)

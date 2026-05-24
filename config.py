@@ -150,3 +150,11 @@ DIST_COOLDOWN           = 120    # seconds between distributed alerts per dst
 # WHITELISTS
 # =========================
 WHITELIST               = {"127.0.0.1"}   # IPs never flagged by any detector
+
+# =========================
+# THREAT FEED — AbuseIPDB
+# =========================
+THREAT_FEED_ENABLED     = False  # set True after adding API key below
+ABUSEIPDB_API_KEY       = ""     # get free key at https://www.abuseipdb.com
+                                  # free tier: 1000 queries/day
+                                  # with caching: well within limits
