@@ -14,6 +14,7 @@ from config import (
     ICMP_PRUNE_INTERVAL as PRUNE_INTERVAL,
     ICMP_AI_MIN_PACKETS,
     WHITELIST,
+    KNOWN_GATEWAYS, ICMP_REDIRECT_COOLDOWN,
     IFACE
 )
 from core.correlation import correlator
@@ -26,7 +27,8 @@ from core.distributed import tracker as dist_tracker
 # =========================
 # STORAGE
 # =========================
-traffic_data = defaultdict(deque)   # ip → [(timestamp, size)]
+traffic_data    = defaultdict(deque)   # ip → [(timestamp, size)]
+redirect_alerted = {}                   # ip → last redirect alert timestamp
 alerted_ips  = {}
 last_prune   = time.time()
 
@@ -64,10 +66,10 @@ def extract_features(ip):
 def detect(packet):
     global last_prune
 
-    # support both ICMPv4 (echo request type=8) and ICMPv6 echo request
-    is_ipv4 = packet.haslayer(IP) and packet.haslayer(ICMP) and packet[ICMP].type == 8
-    is_ipv6 = packet.haslayer(IPv6) and packet.haslayer(ICMPv6EchoRequest)
-    if not (is_ipv4 or is_ipv6):
+    # must have IP or IPv6 layer
+    if not (packet.haslayer(IP) or packet.haslayer(IPv6)):
+        return
+    if not packet.haslayer(ICMP) and not packet.haslayer(ICMPv6EchoRequest):
         return
 
     ip_src = (packet[IPv6].src if packet.haslayer(IPv6) else packet[IP].src)
@@ -75,6 +77,47 @@ def detect(packet):
     now    = time.time()
 
     if ip_src in WHITELIST:
+        return
+
+    # ── ICMP REDIRECT DETECTION ──────────────────────────
+    # check BEFORE the type=8 filter so redirects are never skipped
+    # type 5 = redirect — should only come from known gateways
+    # any redirect from an unknown IP = routing hijack attempt
+    if (packet.haslayer(ICMP) and packet[ICMP].type == 5) or        (packet.haslayer(ICMPv6EchoRequest) and False):  # ICMPv6 ND handled separately
+        if packet.haslayer(ICMP) and packet[ICMP].type == 5:
+            if ip_src not in KNOWN_GATEWAYS:
+                last_redirect = redirect_alerted.get(ip_src, 0)
+                if now - last_redirect > ICMP_REDIRECT_COOLDOWN:
+                    # extract redirect target from ICMP payload
+                    try:
+                        from scapy.all import IPerror
+                        redirect_gw = packet[ICMP].gw if hasattr(packet[ICMP], 'gw') else "unknown"
+                    except Exception:
+                        redirect_gw = "unknown"
+
+                    alert = build_alert(
+                        alert_type = "ICMP_REDIRECT",
+                        source_ip  = ip_src,
+                        target_ip  = ip_dst,
+                        severity   = "HIGH",
+                        features   = {"redirect_gateway": str(redirect_gw)},
+                        extra      = {
+                            "redirect_gw" : str(redirect_gw),
+                            "known_gws"   : list(KNOWN_GATEWAYS),
+                            "detection"   : "RULE"
+                        }
+                    )
+                    print(f"🚨 [RULE] [ICMP_REDIRECT] [HIGH] {ip_src} → {ip_dst} "
+                          f"| redirecting via: {redirect_gw}")
+                    logger.log(alert)
+                    correlator.add_alert(ip_src, "ICMP_REDIRECT", "HIGH", ip_dst)
+                    redirect_alerted[ip_src] = now
+            return   # don't process redirect as flood traffic
+
+    # ── FLOOD DETECTION — only process echo requests (type 8) ──
+    is_ipv4 = packet.haslayer(ICMP) and packet[ICMP].type == 8
+    is_ipv6 = packet.haslayer(ICMPv6EchoRequest)
+    if not (is_ipv4 or is_ipv6):
         return
 
     traffic_data[ip_src].append((now, len(packet)))

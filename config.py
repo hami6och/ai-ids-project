@@ -180,3 +180,16 @@ LW_DNS_COOLDOWN         = 300
 MULTI_SOURCE_WINDOW     = 60     # seconds — track per-dst-port window
 MULTI_SOURCE_THRESHOLD  = 8      # unique source IPs to same port → alert
 MULTI_SOURCE_COOLDOWN   = 120    # seconds between alerts per dst port
+
+# =========================
+# ICMP REDIRECT DETECTION
+# =========================
+# Add your actual gateway IPs here — redirects from these are legitimate
+# Redirects from any other IP are flagged as attacks
+KNOWN_GATEWAYS          = {
+    "192.168.68.2",      # your lab gateway
+    "192.168.68.1",
+    "10.0.0.1",
+    "192.168.1.1",
+}
+ICMP_REDIRECT_COOLDOWN  = 60    # seconds between redirect alerts per source IP
