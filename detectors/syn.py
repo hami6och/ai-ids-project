@@ -8,6 +8,7 @@ from core.window   import clean_old, prune_stale
 from ai.predict  import predict as ai_predict
 from core.alerting import build_alert, severity_syn_flood, severity_syn_scan
 from core.persistence import state_syn
+from core.correlation import correlator
 
 # =========================
 # CONFIG
@@ -144,6 +145,7 @@ def detect(packet):
             icon = "🔥" if detection == "RULE+AI" else "🤖" if "AI" in detection else "🚨"
             print(f"{icon} [{detection}] [SYN_FLOOD] [{alert['severity']}] {ip_src} → {ip_dst}:{port} | rate: {rate:.2f} pps")
             logger.log(alert)
+            correlator.add_alert(ip_src, "SYN_FLOOD", alert["severity"], ip_dst)
             alerted_ips[ip_src] = now
             traffic_data[ip_src].clear()
             return
@@ -164,6 +166,7 @@ def detect(packet):
         icon = "🔥" if detection == "RULE+AI" else "🤖" if "AI" in detection else "🚨"
         print(f"{icon} [{detection}] [SYN_SCAN] [{alert['severity']}] {ip_src} → {ip_dst} | ports: {unique_ports}")
         logger.log(alert)
+        correlator.add_alert(ip_src, "SYN_SCAN", alert["severity"], ip_dst)
         alerted_ips[ip_src] = now
         traffic_data[ip_src].clear()
 

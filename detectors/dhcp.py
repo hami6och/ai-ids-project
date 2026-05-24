@@ -8,6 +8,7 @@ from core.window   import clean_old, prune_stale
 from ai.predict  import predict as ai_predict
 from core.alerting import build_alert, severity_dhcp
 from core.persistence import state_dhcp
+from core.correlation import correlator
 
 # =========================
 # CONFIG
@@ -285,6 +286,7 @@ def detect(packet):
         icon = "🔥" if detection == "RULE+AI" else "🤖" if "AI" in detection else "🚨"
         print(f"{icon} [{detection}] [{severity}] [DHCP_STARVATION] {src_mac} | pps: {pps:.2f} | network MACs: {network_mac_count}")
         logger.log(alert)
+        correlator.add_alert(src_ip, "DHCP_STARVATION", alert["severity"])
         alerted_macs[src_mac] = now
 
     # ── Rule 2 : DHCP ROGUE SERVER ────────────────────────
@@ -310,6 +312,7 @@ def detect(packet):
             icon = "🔥" if detection == "RULE+AI" else "🤖" if "AI" in detection else "🚨"
             print(f"{icon} [{detection}] [CRITICAL] [DHCP_ROGUE_SERVER] Unknown server {src_ip} ({src_mac}) sending OFFERs | offers: {offer_count}")
             logger.log(alert)
+            correlator.add_alert(src_ip, "DHCP_ROGUE_SERVER", "CRITICAL")
             alerted_ips[src_ip] = now
 
     # ── Rule 3 : DHCP DECLINE FLOOD (conflict injection) ──

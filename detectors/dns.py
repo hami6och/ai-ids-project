@@ -8,6 +8,7 @@ from core.window   import clean_old, prune_stale
 from ai.predict  import predict as ai_predict
 from core.alerting import build_alert, severity_dns
 from core.persistence import state_dns
+from core.correlation import correlator
 
 # =========================
 # CONFIG
@@ -177,6 +178,7 @@ def detect(packet):
         icon = "🔥" if detection == "RULE+AI" else "🤖" if "AI" in detection else "🚨"
         print(f"{icon} [{detection}] [{alert['severity']}] [{alert_type}] {ip_src} → {ip_dst} | {features['total_requests']} req | pps: {features['pps']} | avg_len: {features['avg_qname_len']}")
         logger.log(alert)
+        correlator.add_alert(ip_src, alert_type, alert["severity"], ip_dst)
         alerted_ips[ip_src] = now
 
 # =========================

@@ -2,6 +2,8 @@ from scapy.all import sniff, conf
 from detectors import syn, arp, icmp, dns, bruteforce, ftp, dhcp
 from ai.predict  import preload_all
 from core.persistence import restore_all, save_all
+from core.correlation import correlator
+from core.logger      import Logger
 import atexit
 
 # =========================
@@ -28,9 +30,12 @@ if __name__ == "__main__":
     iface = IFACE or conf.iface
     print(f"🚀 AI-IDS MANAGER RUNNING on [{iface}]")
     print("   Detectors: SYN | ARP | ICMP | DNS | BRUTEFORCE | FTP | DHCP")
-    restore_all()   # restore detector state from last session
+    #restore_all()   # restore detector state from last session
     preload_all()   # load all ML models into memory before sniffing
     atexit.register(save_all)   # save state on exit
+    # set campaign logger so correlator can write to JSONL
+    campaign_logger = Logger("data/campaigns.jsonl")
+    correlator.set_logger(campaign_logger)
     sniff(
         iface=iface,
         prn=route,

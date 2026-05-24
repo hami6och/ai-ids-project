@@ -8,6 +8,7 @@ from core.window   import clean_old, prune_stale
 from ai.predict  import predict as ai_predict
 from core.alerting import build_alert, severity_ftp
 from core.persistence import state_ftp
+from core.correlation import correlator
 
 # =========================
 # CONFIG
@@ -208,6 +209,7 @@ def detect(packet):
             print(f"🚨 ALERT [{alert['severity']}] [FTP_BRUTE_FORCE] "
                   f"{src_ip} → {dst_ip} | attempts: {total} | syn_ratio: {syn_r}")
             logger.log(alert)
+            correlator.add_alert(src_ip, "FTP_BRUTE_FORCE", alert["severity"], dst_ip)
             alerted_ips[src_ip] = now
 
     # =========================
@@ -281,6 +283,7 @@ def detect(packet):
                 icon = "🔥" if detection == "RULE+AI" else "🤖" if "AI" in detection else "🚨"
                 print(f"{icon} [{detection}] [{alert['severity']}] [FTP_BOUNCE] {src_ip} using FTP server to scan {target_ip}:{target_port} | PORT cmds: {features['total_port_cmds']}")
                 logger.log(alert)
+                correlator.add_alert(src_ip, "FTP_BOUNCE", alert["severity"], dst_ip)
                 alerted_ips[src_ip] = now
 
 # =========================

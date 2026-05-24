@@ -8,6 +8,7 @@ from core.window   import clean_old, prune_stale
 from ai.predict  import predict as ai_predict
 from core.alerting import build_alert, severity_bruteforce
 from core.persistence import state_bruteforce
+from core.correlation import correlator
 
 # =========================
 # CONFIG
@@ -172,6 +173,7 @@ def detect(packet):
         icon = "🔥" if detection == "RULE+AI" else "🤖" if "AI" in detection else "🚨"
         print(f"{icon} [{detection}] [{alert['severity']}] [{alert_type}] {src_ip} → {dst_ip} | attempts: {total_attempts} | ports: {unique_ports} | focus: {port_focus_ratio}")
         logger.log(alert)
+        correlator.add_alert(src_ip, alert_type, alert["severity"], dst_ip)
         alerted_ips[src_ip] = now
 
 # =========================

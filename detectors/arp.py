@@ -8,6 +8,7 @@ from core.window      import clean_old, prune_stale
 from ai.predict       import predict as ai_predict
 from core.alerting    import build_alert, severity_arp
 from core.persistence import state_arp
+from core.correlation import correlator
 
 # ===============================
 # CONFIG
@@ -161,6 +162,7 @@ def detect_arp(packet):
         icon = "🔥" if detection == "RULE+AI" else "🤖" if "AI" in detection else "🚨"
         print(f"{icon} [{detection}] [ARP_SPOOFING] [{severity}] {ip} | score: {score} | net_rate: {network_arp_rate:.1f}/s")
         logger.log(alert)
+        correlator.add_alert(ip, "ARP_SPOOFING", alert["severity"])
         alerted_ips[ip] = now
 
     arp_table[ip] = mac

@@ -8,6 +8,7 @@ from core.window   import clean_old, prune_stale
 from ai.predict  import predict as ai_predict
 from core.alerting import build_alert, severity_icmp
 from core.persistence import state_icmp
+from core.correlation import correlator
 
 # =========================
 # CONFIG
@@ -135,6 +136,7 @@ def detect(packet):
         icon = "🔥" if detection == "RULE+AI" else "🤖" if "AI" in detection else "🚨"
         print(f"{icon} [{detection}] [ICMP_FLOOD] [{alert['severity']}] {ip_src} → {ip_dst} | pps: {pps:.2f}")
         logger.log(alert)
+        correlator.add_alert(ip_src, "ICMP_FLOOD", alert["severity"], ip_dst)
         alerted_ips[ip_src] = now
         traffic_data[ip_src].clear()
 
