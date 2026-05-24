@@ -1,4 +1,5 @@
 data/*.jsonl
+data/.state/
 datasets/*.csv
 detectors/__pycache__
 core/__pycache__
