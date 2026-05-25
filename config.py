@@ -207,3 +207,13 @@ AI_THRESHOLD_BRUTEFORCE = 0.80
 AI_THRESHOLD_FTP        = 0.80
 AI_THRESHOLD_ARP        = 0.80
 AI_THRESHOLD_DHCP       = 0.80
+
+# =========================
+# MODEL MODE
+# =========================
+MODEL_MODE              = "best"  # "ensemble"   → RF+XGB voting (default, reliable)
+                                      # "best"      → winner per detector (faster)
+                                      # "force_rf"  → RandomForest only
+                                      # "force_xgb" → XGBoost only
+ENSEMBLE_RF_WEIGHT      = 0.5         # weight for RF confidence (ensemble mode only)
+ENSEMBLE_XGB_WEIGHT     = 0.5         # weight for XGB confidence (ensemble mode only)

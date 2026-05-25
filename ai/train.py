@@ -2,12 +2,17 @@
 """
 AI-IDS — Model Training
 ========================
-Trains one Random Forest model per detector and saves it to ai/models/.
+Trains RandomForest + XGBoost per detector.
+Mode controls what gets saved.
 
 Usage :
-    python ai/train.py                    # train all detectors
-    python ai/train.py --detector syn     # train one detector
-    python ai/train.py --detector dns     # train dns only
+    python ai/train.py                          # train all, ensemble mode (default)
+    python ai/train.py --mode best              # train all, save winner per detector
+    python ai/train.py --mode ensemble          # train all, save RF+XGB voting
+    python ai/train.py --mode force_rf          # train RF only, skip XGBoost
+    python ai/train.py --mode force_xgb         # train XGBoost only, skip RF
+    python ai/train.py --detector syn           # single detector
+    python ai/train.py --detector dns --mode force_rf
 
 Output :
     ai/models/syn_model.pkl
@@ -29,6 +34,7 @@ from pathlib import Path
 import pandas as pd
 import numpy as np
 from sklearn.ensemble import RandomForestClassifier
+from xgboost import XGBClassifier
 from sklearn.model_selection import train_test_split, cross_val_score
 from sklearn.metrics import (
     classification_report,
@@ -63,13 +69,26 @@ RF_PARAMS = {
     "random_state"  : 42
 }
 
+# XGBoost hyperparameters
+XGB_PARAMS = {
+    "n_estimators"      : 100,
+    "max_depth"         : 6,
+    "learning_rate"     : 0.1,
+    "subsample"         : 0.8,
+    "colsample_bytree"  : 0.8,
+    "eval_metric"       : "logloss",
+    "random_state"      : 42,
+    "n_jobs"            : -1,
+    "scale_pos_weight"  : 1,   # handles class imbalance
+}
+
 # minimum rows needed to attempt training
 MIN_ROWS = 1000
 
 # =========================
 # TRAIN ONE DETECTOR
 # =========================
-def train_detector(detector: str) -> dict:
+def train_detector(detector: str, mode: str = "ensemble") -> dict:
     """
     Load data, train model, evaluate, save model.
     Returns metrics dict.
@@ -127,21 +146,50 @@ def train_detector(detector: str) -> dict:
     # TRAIN
     # =========================
     print(f"\n  Training Random Forest...")
-    model = RandomForestClassifier(**RF_PARAMS)
-    model.fit(X_train, y_train)
+    # =========================
+    # TRAIN RANDOM FOREST
+    # =========================
+    print(f"\n  Training Random Forest...")
+    rf_model = RandomForestClassifier(**RF_PARAMS)
+    rf_model.fit(X_train, y_train)
+    rf_pred  = rf_model.predict(X_test)
+    rf_proba = rf_model.predict_proba(X_test)[:, 1]
+
+    rf_f1 = f1_score(y_test, rf_pred, zero_division=0)
+    print(f"  RF  F1 : {rf_f1:.4f}")
 
     # =========================
-    # EVALUATE
+    # TRAIN XGBOOST
     # =========================
-    y_pred = model.predict(X_test)
+    print(f"  Training XGBoost...")
+    # compute scale_pos_weight for class imbalance
+    neg = int((y_train == 0).sum())
+    pos = int((y_train == 1).sum())
+    xgb_params = {**XGB_PARAMS, "scale_pos_weight": round(neg / max(pos, 1), 2)}
 
-    precision = precision_score(y_test, y_pred, zero_division=0)
-    recall    = recall_score(y_test, y_pred, zero_division=0)
-    f1        = f1_score(y_test, y_pred, zero_division=0)
-    cm        = confusion_matrix(y_test, y_pred).tolist()
+    xgb_model = XGBClassifier(**xgb_params)
+    xgb_model.fit(X_train, y_train)
+    xgb_pred  = xgb_model.predict(X_test)
+    xgb_proba = xgb_model.predict_proba(X_test)[:, 1]
 
-    print(f"\n  Results :")
-    print(classification_report(y_test, y_pred,
+    xgb_f1 = f1_score(y_test, xgb_pred, zero_division=0)
+    print(f"  XGB F1 : {xgb_f1:.4f}")
+
+    # =========================
+    # ENSEMBLE EVALUATION
+    # =========================
+    ensemble_proba = (rf_proba + xgb_proba) / 2
+    ensemble_pred  = (ensemble_proba >= 0.5).astype(int)
+
+    precision = precision_score(y_test, ensemble_pred, zero_division=0)
+    recall    = recall_score(y_test, ensemble_pred, zero_division=0)
+    f1        = f1_score(y_test, ensemble_pred, zero_division=0)
+    cm        = confusion_matrix(y_test, ensemble_pred).tolist()
+
+    print(f"  Ensemble F1 : {f1:.4f}  (RF={rf_f1:.4f} + XGB={xgb_f1:.4f})")
+
+    print(f"\n  Results (Ensemble RF+XGB) :")
+    print(classification_report(y_test, ensemble_pred,
           target_names=["normal", "attack"], zero_division=0))
 
     print(f"  Confusion matrix :")
@@ -149,35 +197,78 @@ def train_detector(detector: str) -> dict:
     print(f"    FN={cm[1][0]}  TP={cm[1][1]}")
 
     # =========================
-    # FEATURE IMPORTANCE
+    # FEATURE IMPORTANCE (RF)
     # =========================
-    importance = dict(zip(
-        feature_cols,
-        model.feature_importances_.round(4)
-    ))
-    importance_sorted = dict(
-        sorted(importance.items(), key=lambda x: -x[1])
-    )
+    importance = dict(zip(feature_cols, rf_model.feature_importances_.round(4)))
+    importance_sorted = dict(sorted(importance.items(), key=lambda x: -x[1]))
 
-    print(f"\n  Feature importance :")
+    print(f"\n  Feature importance (RF) :")
     for feat, score in importance_sorted.items():
         bar = "█" * int(score * 40)
         print(f"    {feat:30s} {score:.4f}  {bar}")
 
     # =========================
-    # SAVE MODEL
+    # SAVE — MODE AWARE
     # =========================
     MODELS_DIR.mkdir(parents=True, exist_ok=True)
     model_path = MODELS_DIR / f"{detector}_model.pkl"
 
-    with open(model_path, "wb") as f:
-        pickle.dump({
-            "model"        : model,
-            "feature_cols" : feature_cols,
-            "detector"     : detector,
-        }, f)
+    if mode == "best":
+        if xgb_f1 >= rf_f1:
+            winner, winner_name, winner_f1 = xgb_model, "XGBoost", xgb_f1
+        else:
+            winner, winner_name, winner_f1 = rf_model,  "RandomForest", rf_f1
+        with open(model_path, "wb") as f:
+            pickle.dump({
+                "model"        : winner,
+                "feature_cols" : feature_cols,
+                "detector"     : detector,
+                "ensemble"     : False,
+                "model_type"   : winner_name,
+                "rf_f1"        : round(rf_f1, 4),
+                "xgb_f1"       : round(xgb_f1, 4),
+            }, f)
+        print(f"\n  ✅ Best model saved ({winner_name} F1={winner_f1:.4f}) → {model_path}")
 
-    print(f"\n  ✅ Model saved → {model_path}")
+    elif mode == "force_rf":
+        with open(model_path, "wb") as f:
+            pickle.dump({
+                "model"        : rf_model,
+                "feature_cols" : feature_cols,
+                "detector"     : detector,
+                "ensemble"     : False,
+                "model_type"   : "RandomForest",
+                "rf_f1"        : round(rf_f1, 4),
+                "xgb_f1"       : round(xgb_f1, 4),
+            }, f)
+        print(f"\n  ✅ RF model saved (F1={rf_f1:.4f}) → {model_path}")
+
+    elif mode == "force_xgb":
+        with open(model_path, "wb") as f:
+            pickle.dump({
+                "model"        : xgb_model,
+                "feature_cols" : feature_cols,
+                "detector"     : detector,
+                "ensemble"     : False,
+                "model_type"   : "XGBoost",
+                "rf_f1"        : round(rf_f1, 4),
+                "xgb_f1"       : round(xgb_f1, 4),
+            }, f)
+        print(f"\n  ✅ XGB model saved (F1={xgb_f1:.4f}) → {model_path}")
+
+    else:  # ensemble
+        with open(model_path, "wb") as f:
+            pickle.dump({
+                "model"        : rf_model,
+                "xgb_model"    : xgb_model,
+                "feature_cols" : feature_cols,
+                "detector"     : detector,
+                "ensemble"     : True,
+                "model_type"   : "ensemble",
+                "rf_f1"        : round(rf_f1, 4),
+                "xgb_f1"       : round(xgb_f1, 4),
+            }, f)
+        print(f"\n  ✅ Ensemble model saved (RF={rf_f1:.4f} + XGB={xgb_f1:.4f}) → {model_path}")
 
     # count own JSONL rows if they exist — used by retrain.py for data growth tracking
     from pathlib import Path as _Path
@@ -206,6 +297,9 @@ def train_detector(detector: str) -> dict:
         "precision"         : round(precision, 4),
         "recall"            : round(recall, 4),
         "f1"                : round(f1, 4),
+        "mode"              : mode,
+        "rf_f1"             : round(rf_f1, 4),
+        "xgb_f1"            : round(xgb_f1, 4),
         "confusion_matrix"  : cm,
         "feature_importance": importance_sorted,
         "model_path"        : str(model_path)
@@ -236,16 +330,20 @@ def save_metrics(all_metrics: list):
 # SUMMARY TABLE
 # =========================
 def print_summary(all_metrics: list):
-    print(f"\n{'='*55}")
+    print(f"\n{'='*70}")
     print(f"  TRAINING SUMMARY")
-    print(f"{'='*55}")
-    print(f"  {'Detector':<14} {'Status':<10} {'Precision':>10} {'Recall':>8} {'F1':>8}")
-    print(f"  {'-'*52}")
+    print(f"{'='*70}")
+    print(f"  {'Detector':<14} {'Status':<10} {'RF F1':>8} {'XGB F1':>8} {'Ensemble':>10} {'Mode'}")
+    print(f"  {'-'*66}")
 
     for m in all_metrics:
         if m["status"] == "trained":
+            rf_f1  = m.get("rf_f1", m["f1"])
+            xgb_f1 = m.get("xgb_f1", m["f1"])
+            ens_f1 = m["f1"]
+            mode   = m.get("mode", "ensemble")
             print(f"  {m['detector']:<14} {'✅ trained':<10} "
-                  f"{m['precision']:>10.4f} {m['recall']:>8.4f} {m['f1']:>8.4f}")
+                  f"{rf_f1:>8.4f} {xgb_f1:>8.4f} {ens_f1:>10.4f} {mode}")
         else:
             print(f"  {m['detector']:<14} ⏭️  {m['status']} — {m.get('reason','')}")
 
@@ -260,17 +358,33 @@ if __name__ == "__main__":
         default="all",
         help="Which detector to train (default: all)"
     )
+    parser.add_argument(
+        "--mode",
+        choices=["ensemble", "best", "force_rf", "force_xgb"],
+        default=None,
+        help="ensemble: RF+XGB voting | best: winner per detector | force_rf: RF only | force_xgb: XGB only"
+    )
     args = parser.parse_args()
 
+    # mode priority: CLI flag > config.py > default ensemble
+    import sys
+    sys.path.insert(0, ".")
+    try:
+        from config import MODEL_MODE as _cfg_mode
+    except ImportError:
+        _cfg_mode = "ensemble"
+
+    mode      = args.mode or _cfg_mode or "ensemble"
     detectors = ALL_DETECTORS if args.detector == "all" else [args.detector]
 
     print(f"🚀 AI-IDS Training Pipeline")
     print(f"   Detectors : {detectors}")
+    print(f"   Mode      : {mode}")
     print(f"   Models dir: {MODELS_DIR}")
 
     all_metrics = []
     for det in detectors:
-        metrics = train_detector(det)
+        metrics = train_detector(det, mode=mode)
         all_metrics.append(metrics)
 
     save_metrics(all_metrics)

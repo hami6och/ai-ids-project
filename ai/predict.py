@@ -184,8 +184,10 @@ if __name__ == "__main__":
         feature_cols = data["feature_cols"]
         size_kb      = round(path.stat().st_size / 1024, 1)
 
+        has_xgb   = "xgb_model" in data and data.get("ensemble", False)
+        ensemble_str = "RF+XGB ensemble" if has_xgb else "RF only"
         print(f"  ✅ {det:<12} — {len(feature_cols)} features | "
-              f"{model.n_estimators} trees | {size_kb} KB")
+              f"{model.n_estimators} trees | {size_kb} KB | {ensemble_str}")
         print(f"     features : {feature_cols}")
 
         # sanity test — zero vector should return low confidence
