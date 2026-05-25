@@ -16,8 +16,7 @@ from config import (
     DHCP_STARVATION_MACS as STARVATION_MAC_COUNT,
     DHCP_DECLINE_THRESHOLD as REPEATED_DECLINE_THRESHOLD,
     DHCP_RELEASE_THRESHOLD as RAPID_RELEASE_THRESHOLD,
-    DHCP_LEGITIMATE_SERVERS as LEGITIMATE_DHCP_SERVERS,
-    IFACE
+    DHCP_LEGITIMATE_SERVERS as LEGITIMATE_DHCP_SERVERS
 )
 from core.correlation import correlator
 
@@ -283,7 +282,7 @@ def detect(packet):
         )
         detection = alert.get("detection", "RULE")
         icon = "🔥" if detection == "RULE+AI" else "🤖" if "AI" in detection else "🚨"
-        print(f"{icon} [{detection}] [{severity}] [DHCP_STARVATION] {src_mac} | pps: {pps:.2f} | network MACs: {network_mac_count}")
+        print(f"{icon} [{detection}] [{severity}] [DHCP_STARVATION] {src_mac} | pps: {pps:.2f} | network MACs: {network_mac_count} | AI: {int(ai_conf*100)}%")
         logger.log(alert)
         correlator.add_alert(src_ip, "DHCP_STARVATION", alert["severity"])
         alerted_macs[src_mac] = now
@@ -309,7 +308,7 @@ def detect(packet):
             )
             detection = alert.get("detection", "RULE")
             icon = "🔥" if detection == "RULE+AI" else "🤖" if "AI" in detection else "🚨"
-            print(f"{icon} [{detection}] [CRITICAL] [DHCP_ROGUE_SERVER] Unknown server {src_ip} ({src_mac}) sending OFFERs | offers: {offer_count}")
+            print(f"{icon} [{detection}] [CRITICAL] [DHCP_ROGUE_SERVER] Unknown server {src_ip} ({src_mac}) sending OFFERs | offers: {offer_count} | AI: {int(ai_conf*100)}%")
             logger.log(alert)
             correlator.add_alert(src_ip, "DHCP_ROGUE_SERVER", "CRITICAL")
             alerted_ips[src_ip] = now
@@ -331,7 +330,7 @@ def detect(packet):
         )
         detection = alert.get("detection", "RULE")
         icon = "🔥" if detection == "RULE+AI" else "🤖" if "AI" in detection else "🚨"
-        print(f"{icon} [{detection}] [{alert['severity']}] [DHCP_DECLINE_FLOOD] {src_mac} | declines: {decline_count}")
+        print(f"{icon} [{detection}] [{alert['severity']}] [DHCP_DECLINE_FLOOD] {src_mac} | declines: {decline_count} | AI: {int(ai_conf*100)}%")
         logger.log(alert)
         alerted_macs[src_mac] = now
 
@@ -358,7 +357,7 @@ def detect(packet):
         )
         detection = alert.get("detection", "RULE")
         icon = "🔥" if detection == "RULE+AI" else "🤖" if "AI" in detection else "🚨"
-        print(f"{icon} [{detection}] [{alert['severity']}] [DHCP_RAPID_CYCLING] {src_mac} | releases: {release_count} discovers: {discover_count}")
+        print(f"{icon} [{detection}] [{alert['severity']}] [DHCP_RAPID_CYCLING] {src_mac} | releases: {release_count} discovers: {discover_count} | AI: {int(ai_conf*100)}%")
         logger.log(alert)
         alerted_macs[src_mac] = now
 

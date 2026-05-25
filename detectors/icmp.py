@@ -182,7 +182,7 @@ def detect(packet):
         )
         detection = alert.get("detection", "RULE")
         icon = "🔥" if detection == "RULE+AI" else "🤖" if "AI" in detection else "🚨"
-        print(f"{icon} [{detection}] [ICMP_FLOOD] [{alert['severity']}] {ip_src} → {ip_dst} | pps: {pps:.2f}")
+        print(f"{icon} [{detection}] [ICMP_FLOOD] [{alert['severity']}] {ip_src} → {ip_dst} | pps: {pps:.2f} | AI: {int(ai_conf*100)}%")
         logger.log(alert)
         correlator.add_alert(ip_src, "ICMP_FLOOD", alert["severity"], ip_dst)
         alerted_ips[ip_src] = now

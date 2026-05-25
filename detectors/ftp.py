@@ -210,8 +210,10 @@ def detect(packet):
                 severity   = severity_ftp("FTP_BRUTE_FORCE", pps, total),
                 features   = features
             )
-            print(f"🚨 ALERT [{alert['severity']}] [FTP_BRUTE_FORCE] "
-                  f"{src_ip} → {dst_ip} | attempts: {total} | syn_ratio: {syn_r}")
+            detection = alert.get("detection", "RULE")
+            icon = "🔥" if detection == "RULE+AI" else "🤖" if "AI" in detection else "🚨"
+            print(f"{icon} [{detection}] [{alert['severity']}] [FTP_BRUTE_FORCE] "
+                  f"{src_ip} → {dst_ip} | attempts: {total} | syn_ratio: {syn_r} | AI: {int(ai_conf*100)}%")
             logger.log(alert)
             correlator.add_alert(src_ip, "FTP_BRUTE_FORCE", alert["severity"], dst_ip)
             alerted_ips[src_ip] = now
@@ -285,7 +287,7 @@ def detect(packet):
                 )
                 detection = alert.get("detection", "RULE")
                 icon = "🔥" if detection == "RULE+AI" else "🤖" if "AI" in detection else "🚨"
-                print(f"{icon} [{detection}] [{alert['severity']}] [FTP_BOUNCE] {src_ip} using FTP server to scan {target_ip}:{target_port} | PORT cmds: {features['total_port_cmds']}")
+                print(f"{icon} [{detection}] [{alert['severity']}] [FTP_BOUNCE] {src_ip} using FTP server to scan {target_ip}:{target_port} | PORT cmds: {features['total_port_cmds']} | AI: {int(ai_conf*100)}%")
                 logger.log(alert)
                 correlator.add_alert(src_ip, "FTP_BOUNCE", alert["severity"], dst_ip)
                 alerted_ips[src_ip] = now

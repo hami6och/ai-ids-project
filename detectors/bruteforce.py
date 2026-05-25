@@ -244,7 +244,7 @@ def detect(packet):
         )
         detection = alert.get("detection", "RULE")
         icon = "🔥" if detection == "RULE+AI" else "🤖" if "AI" in detection else "🚨"
-        print(f"{icon} [{detection}] [{alert['severity']}] [{alert_type}] {src_ip} → {dst_ip} | attempts: {total_attempts} | ports: {unique_ports} | focus: {port_focus_ratio}")
+        print(f"{icon} [{detection}] [{alert['severity']}] [{alert_type}] {src_ip} → {dst_ip} | attempts: {total_attempts} | ports: {unique_ports} | focus: {port_focus_ratio} | AI: {int(ai_conf*100)}%")
         logger.log(alert)
         correlator.add_alert(src_ip, alert_type, alert["severity"], dst_ip)
         alerted_ips[src_ip] = now

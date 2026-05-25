@@ -207,7 +207,7 @@ def detect(packet):
         )
         detection = alert.get("detection", "RULE")
         icon = "🔥" if detection == "RULE+AI" else "🤖" if "AI" in detection else "🚨"
-        print(f"{icon} [{detection}] [{alert['severity']}] [{alert_type}] {ip_src} → {ip_dst} | {features['total_requests']} req | pps: {features['pps']} | avg_len: {features['avg_qname_len']}")
+        print(f"{icon} [{detection}] [{alert['severity']}] [{alert_type}] {ip_src} → {ip_dst} | {features['total_requests']} req | pps: {features['pps']} | avg_len: {features['avg_qname_len']} | AI: {int(ai_conf*100)}%")
         logger.log(alert)
         correlator.add_alert(ip_src, alert_type, alert["severity"], ip_dst)
         alerted_ips[ip_src] = now

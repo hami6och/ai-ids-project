@@ -163,7 +163,7 @@ def detect_arp(packet):
                           "ai_confidence": ai_conf, "detection": detection}
         )
         icon = "🔥" if detection == "RULE+AI" else "🤖" if "AI" in detection else "🚨"
-        print(f"{icon} [{detection}] [ARP_SPOOFING] [{severity}] {ip} | score: {score} | net_rate: {network_arp_rate:.1f}/s")
+        print(f"{icon} [{detection}] [ARP_SPOOFING] [{severity}] {ip} | score: {score} | net_rate: {network_arp_rate:.1f}/s | AI: {int(ai_conf*100)}%")
         logger.log(alert)
         correlator.add_alert(ip, "ARP_SPOOFING", alert["severity"])
         alerted_ips[ip] = now
