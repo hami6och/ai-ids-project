@@ -9,6 +9,7 @@ from ai.predict       import predict as ai_predict
 from core.alerting    import build_alert, severity_arp
 from core.persistence import state_arp
 from config import (
+    AI_THRESHOLD_ARP,
     ARP_RATE_WINDOW as RATE_WINDOW,
     ARP_RATE_THRESHOLD as RATE_THRESHOLD,
     ARP_NETWORK_RATE_THRESH as NETWORK_RATE_THRESHOLD,
@@ -23,7 +24,6 @@ from core.correlation import correlator
 # ===============================
 # CONFIG
 # ===============================
-ALERT_THRESHOLD          = 8
 
 # ===============================
 # STORAGE
@@ -107,7 +107,7 @@ def detect_arp(packet):
     if not features:
         return
 
-    ai_result = ai_predict("arp", features)
+    ai_result = ai_predict("arp", features, threshold=AI_THRESHOLD_ARP)
     ai_alert  = ai_result["is_attack"]
     ai_conf   = ai_result["confidence"]
 

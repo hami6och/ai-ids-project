@@ -9,6 +9,7 @@ from ai.predict  import predict as ai_predict
 from core.alerting import build_alert, severity_dns
 from core.persistence import state_dns
 from config import (
+    AI_THRESHOLD_DNS,
     DNS_TIME_WINDOW as TIME_WINDOW,
     DNS_REQUEST_THRESHOLD as REQUEST_THRESHOLD,
     DNS_TUNNEL_QNAME_LEN,
@@ -146,7 +147,7 @@ def detect(packet):
     # a single DNS query has too little context for a confident prediction
     # =========================
     if features["total_requests"] >= DNS_AI_MIN_REQUESTS:
-        ai_result = ai_predict("dns", features)
+        ai_result = ai_predict("dns", features, threshold=AI_THRESHOLD_DNS)
         ai_alert  = ai_result["is_attack"]
         ai_conf   = ai_result["confidence"]
     else:

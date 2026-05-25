@@ -9,6 +9,7 @@ from ai.predict  import predict as ai_predict
 from core.alerting import build_alert, severity_dhcp
 from core.persistence import state_dhcp
 from config import (
+    AI_THRESHOLD_DHCP,
     DHCP_TIME_WINDOW as TIME_WINDOW,
     DHCP_ALERT_COOLDOWN as ALERT_COOLDOWN,
     DHCP_PRUNE_INTERVAL as PRUNE_INTERVAL,
@@ -213,7 +214,7 @@ def detect(packet):
     # AI PREDICTION
     # runs alongside rule-based, either can trigger alert
     # =========================
-    ai_result = ai_predict("dhcp", features)
+    ai_result = ai_predict("dhcp", features, threshold=AI_THRESHOLD_DHCP)
     ai_alert  = ai_result["is_attack"]
     ai_conf   = ai_result["confidence"]
 

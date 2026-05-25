@@ -9,6 +9,7 @@ from ai.predict  import predict as ai_predict
 from core.alerting import build_alert, severity_icmp
 from core.persistence import state_icmp
 from config import (
+    AI_THRESHOLD_ICMP,
     ICMP_TIME_WINDOW as TIME_WINDOW,
     ICMP_FLOOD_RATE, ICMP_ALERT_COOLDOWN as ALERT_COOLDOWN,
     ICMP_PRUNE_INTERVAL as PRUNE_INTERVAL,
@@ -146,7 +147,7 @@ def detect(packet):
     # on normal pings which have too few packets for a confident prediction
     # =========================
     if total_packets >= ICMP_AI_MIN_PACKETS:
-        ai_result = ai_predict("icmp", features)
+        ai_result = ai_predict("icmp", features, threshold=AI_THRESHOLD_ICMP)
         ai_alert  = ai_result["is_attack"]
         ai_conf   = ai_result["confidence"]
     else:

@@ -9,6 +9,7 @@ from ai.predict  import predict as ai_predict
 from core.alerting import build_alert, severity_syn_flood, severity_syn_scan
 from core.persistence import state_syn
 from config import (
+    AI_THRESHOLD_SYN,
     SYN_TIME_WINDOW as TIME_WINDOW,
     SYN_FLOOD_RATE, PORT_SCAN_THRESHOLD,
     SYN_ALERT_COOLDOWN as ALERT_COOLDOWN,
@@ -110,7 +111,7 @@ def detect(packet):
     # to distinguish from normal browsing (3-4 connections)
     # =========================
     if total_packets >= SYN_AI_MIN_PACKETS:
-        ai_result = ai_predict("syn", features)
+        ai_result = ai_predict("syn", features, threshold=AI_THRESHOLD_SYN)
         ai_alert  = ai_result["is_attack"]
         ai_conf   = ai_result["confidence"]
     else:

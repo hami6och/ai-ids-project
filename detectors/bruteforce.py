@@ -9,6 +9,7 @@ from ai.predict  import predict as ai_predict
 from core.alerting import build_alert, severity_bruteforce
 from core.persistence import state_bruteforce
 from config import (
+    AI_THRESHOLD_BRUTEFORCE,
     MULTI_SOURCE_WINDOW, MULTI_SOURCE_THRESHOLD, MULTI_SOURCE_COOLDOWN,
     BRUTE_TIME_WINDOW as TIME_WINDOW,
     BRUTE_ATTEMPT_THRESHOLD as ATTEMPT_THRESHOLD,
@@ -150,7 +151,7 @@ def detect(packet):
     # fewer attempts may just be normal connection behavior
     # =========================
     if features.get("total_attempts", 0) >= BRUTE_AI_MIN_ATTEMPTS:
-        ai_result = ai_predict("bruteforce", features)
+        ai_result = ai_predict("bruteforce", features, threshold=AI_THRESHOLD_BRUTEFORCE)
         ai_alert  = ai_result["is_attack"]
         ai_conf   = ai_result["confidence"]
     else:

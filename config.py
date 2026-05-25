@@ -193,3 +193,17 @@ KNOWN_GATEWAYS          = {
     "192.168.1.1",
 }
 ICMP_REDIRECT_COOLDOWN  = 60    # seconds between redirect alerts per source IP
+
+# =========================
+# PER-DETECTOR AI THRESHOLDS
+# Override global AI_THRESHOLD per detector
+# Higher = fewer false positives, may miss borderline attacks
+# Lower  = catches more attacks, may increase false positives
+# =========================
+AI_THRESHOLD_SYN        = 0.85   # higher — SYN zero-vector confidence is 0.698
+AI_THRESHOLD_ICMP       = 0.80
+AI_THRESHOLD_DNS        = 0.75   # lower — catch more DNS tunnel variants
+AI_THRESHOLD_BRUTEFORCE = 0.80
+AI_THRESHOLD_FTP        = 0.80
+AI_THRESHOLD_ARP        = 0.80
+AI_THRESHOLD_DHCP       = 0.80

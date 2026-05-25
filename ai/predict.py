@@ -61,7 +61,7 @@ def _get_model(detector: str) -> dict | None:
 # PREDICT
 # Core function called by every detector
 # =========================
-def predict(detector: str, features: dict) -> dict:
+def predict(detector: str, features: dict, threshold: float = None) -> dict:
     """
     Run AI prediction on a feature vector.
 
@@ -111,8 +111,9 @@ def predict(detector: str, features: dict) -> dict:
         # and ensure feature order matches training exactly
         df_input   = pd.DataFrame([vector], columns=feature_cols)
         proba      = model.predict_proba(df_input)[0]
-        confidence = round(float(proba[1]), 4)
-        is_attack  = confidence >= AI_THRESHOLD
+        confidence   = round(float(proba[1]), 4)
+        _threshold   = threshold if threshold is not None else AI_THRESHOLD
+        is_attack    = confidence >= _threshold
 
         return {
             "is_attack"  : is_attack,
