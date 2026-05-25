@@ -173,15 +173,19 @@ class BruteForceDetector:
         unique_ports     = features["unique_ports"]
         port_focus_ratio = features["port_focus_ratio"]
 
-        self.logger.log({
+        traffic_doc = {
             "timestamp" : str(datetime.now()),
+            "detector"  : self.NAME,
             "source_ip" : src_ip,
             "target_ip" : dst_ip,
             "dport"     : dport,
             "flags"     : flags,
             "label"     : 0,
             **features
-        })
+        }
+        self.logger.log(traffic_doc)
+        if self.alert_store:
+            self.alert_store.insert_traffic(traffic_doc)
 
         # MULTI-SOURCE BRUTE FORCE
         unique_sources = len({s for _, s in self.dst_port_sources.get(dst_key, deque())})

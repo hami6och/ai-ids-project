@@ -153,8 +153,9 @@ class ICMPDetector:
             ai_alert = False
             ai_conf  = 0.0
 
-        self.logger.log({
+        traffic_doc = {
             "timestamp"      : str(datetime.now()),
+            "detector"       : self.NAME,
             "source_ip"      : ip_src,
             "target_ip"      : ip_dst,
             "total_packets"  : total_packets,
@@ -163,7 +164,10 @@ class ICMPDetector:
             "avg_packet_size": features["avg_packet_size"],
             "max_packet_size": features["max_packet_size"],
             "label"          : 0
-        })
+        }
+        self.logger.log(traffic_doc)
+        if self.alert_store:
+            self.alert_store.insert_traffic(traffic_doc)
 
         last_alert = self.alerted_ips.get(ip_src, 0)
         if now - last_alert < self.alert_cooldown:

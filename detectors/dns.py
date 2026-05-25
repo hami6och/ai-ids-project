@@ -162,15 +162,19 @@ class DNSDetector:
             ai_alert = False
             ai_conf  = 0.0
 
-        self.logger.log({
+        traffic_doc = {
             "timestamp" : str(datetime.now()),
+            "detector"  : self.NAME,
             "source_ip" : ip_src,
             "target_ip" : ip_dst,
             "qname"     : qname,
             "qtype"     : qtype_str,
             "label"     : 0,
             **features
-        })
+        }
+        self.logger.log(traffic_doc)
+        if self.alert_store:
+            self.alert_store.insert_traffic(traffic_doc)
 
         # SLOW DNS FLOOD
         if lw_dns.should_alert(ip_src, now):

@@ -173,14 +173,18 @@ class FTPDetector:
                 ai_alert = False
                 ai_conf  = 0.0
 
-            self.logger.log({
+            traffic_doc = {
                 "timestamp"  : str(datetime.now()),
+                "detector"   : self.NAME,
                 "source_ip"  : src_ip,
                 "target_ip"  : dst_ip,
                 "attack_path": "brute_force",
                 "label"      : 0,
                 **features
-            })
+            }
+            self.logger.log(traffic_doc)
+            if self.alert_store:
+                self.alert_store.insert_traffic(traffic_doc)
 
             last_alert = self.alerted_ips.get(src_ip, 0)
             if now - last_alert < self.alert_cooldown:
@@ -242,8 +246,9 @@ class FTPDetector:
                     ai_alert = False
                     ai_conf  = 0.0
 
-                self.logger.log({
+                traffic_doc = {
                     "timestamp"    : str(datetime.now()),
+                    "detector"     : self.NAME,
                     "source_ip"    : src_ip,
                     "target_ip"    : dst_ip,
                     "bounce_target": target_ip,
@@ -251,7 +256,10 @@ class FTPDetector:
                     "attack_path"  : "bounce",
                     "label"        : 0,
                     **features
-                })
+                }
+                self.logger.log(traffic_doc)
+                if self.alert_store:
+                    self.alert_store.insert_traffic(traffic_doc)
 
                 last_alert = self.alerted_ips.get(src_ip, 0)
                 if now - last_alert < self.alert_cooldown:

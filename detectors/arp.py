@@ -139,8 +139,10 @@ class ARPDetector:
         if is_gratuitous:                                  score += 2
         if is_broadcast:                                   score += 2
 
-        self.logger.log({
+        traffic_doc = {
             "timestamp"        : str(datetime.now()),
+            "detector"         : self.NAME,
+            "source_ip"        : ip,
             "ip"               : ip,
             "mac"              : mac,
             "known_mac"        : features["known_mac"],
@@ -153,7 +155,10 @@ class ARPDetector:
             "is_broadcast"     : is_broadcast,
             "score"            : score,
             "label"            : 0
-        })
+        }
+        self.logger.log(traffic_doc)
+        if self.alert_store:
+            self.alert_store.insert_traffic(traffic_doc)
 
         last_alert = self.alerted_ips.get(ip, 0)
         if now - last_alert < self.alert_cooldown:

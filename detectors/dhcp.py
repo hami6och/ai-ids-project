@@ -187,15 +187,20 @@ class DHCPDetector:
 
         network_mac_count = self._get_network_mac_count(now)
 
-        self.logger.log({
+        traffic_doc = {
             "timestamp"        : str(datetime.now()),
+            "detector"         : self.NAME,
+            "source_ip"        : src_ip,
             "src_mac"          : src_mac,
             "src_ip"           : src_ip,
             "msg_type"         : type_str,
             "network_mac_count": network_mac_count,
             "label"            : 0,
             **features
-        })
+        }
+        self.logger.log(traffic_doc)
+        if self.alert_store:
+            self.alert_store.insert_traffic(traffic_doc)
 
         last_alert_mac = self.alerted_macs.get(src_mac, 0)
         pps            = features["pps"]
