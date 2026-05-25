@@ -150,7 +150,7 @@ def detect(packet):
             )
             detection = alert.get("detection", "RULE")
             icon = "🔥" if detection == "RULE+AI" else "🤖" if "AI" in detection else "🚨"
-            print(f"{icon} [{detection}] [SYN_FLOOD] [{alert['severity']}] {ip_src} → {ip_dst}:{port} | rate: {rate:.2f} pps | AI: {int(ai_conf*100)}% if ai_conf else '--'")
+            print(f"{icon} [{detection}] [SYN_FLOOD] [{alert['severity']}] {ip_src} → {ip_dst}:{port} | rate: {rate:.2f} pps | AI: {int(ai_conf*100) if ai_conf else '--'}%")
             logger.log(alert)
             correlator.add_alert(ip_src, "SYN_FLOOD", alert["severity"], ip_dst)
             alerted_ips[ip_src] = now
@@ -189,7 +189,7 @@ def detect(packet):
         )
         detection = alert.get("detection", "RULE")
         icon = "🔥" if detection == "RULE+AI" else "🤖" if "AI" in detection else "🚨"
-        print(f"{icon} [{detection}] [SYN_SCAN] [{alert['severity']}] {ip_src} → {ip_dst} | ports: {unique_ports} | AI: {int(ai_conf*100)}% if ai_conf else '--'")
+        print(f"{icon} [{detection}] [SYN_SCAN] [{alert['severity']}] {ip_src} → {ip_dst} | ports: {unique_ports} | AI: {int(ai_conf*100) if ai_conf else '--'}%")
         logger.log(alert)
         correlator.add_alert(ip_src, "SYN_SCAN", alert["severity"], ip_dst)
         alerted_ips[ip_src] = now

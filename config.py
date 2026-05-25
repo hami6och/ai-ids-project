@@ -43,7 +43,7 @@ ICMP_AI_MIN_PACKETS     = 10    # minimum packets before AI runs
 # =========================
 DNS_TIME_WINDOW         = 5
 DNS_REQUEST_THRESHOLD   = 20    # requests in window → flood alert
-DNS_TUNNEL_QNAME_LEN    = 80    # avg query name length → tunnel alert
+DNS_TUNNEL_QNAME_LEN    = 50    # avg query name length → tunnel alert
 DNS_ALERT_COOLDOWN      = 20
 DNS_PRUNE_INTERVAL      = 60
 DNS_AI_MIN_REQUESTS     = 5     # minimum requests before AI runs
@@ -200,9 +200,9 @@ ICMP_REDIRECT_COOLDOWN  = 60    # seconds between redirect alerts per source IP
 # Higher = fewer false positives, may miss borderline attacks
 # Lower  = catches more attacks, may increase false positives
 # =========================
-AI_THRESHOLD_SYN        = 0.85   # higher — SYN zero-vector confidence is 0.698
+AI_THRESHOLD_SYN        = 0.60   # lowered to catch slow port scans
 AI_THRESHOLD_ICMP       = 0.80
-AI_THRESHOLD_DNS        = 0.75   # lower — catch more DNS tunnel variants
+AI_THRESHOLD_DNS        = 0.60   # lowered to catch sub-threshold DNS patterns
 AI_THRESHOLD_BRUTEFORCE = 0.80
 AI_THRESHOLD_FTP        = 0.80
 AI_THRESHOLD_ARP        = 0.80
@@ -211,7 +211,7 @@ AI_THRESHOLD_DHCP       = 0.80
 # =========================
 # MODEL MODE
 # =========================
-MODEL_MODE              = "best"  # "ensemble"   → RF+XGB voting (default, reliable)
+MODEL_MODE              = "ensemble"  # "ensemble"   → RF+XGB voting (default, reliable)
                                       # "best"      → winner per detector (faster)
                                       # "force_rf"  → RandomForest only
                                       # "force_xgb" → XGBoost only
