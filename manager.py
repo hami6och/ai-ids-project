@@ -5,46 +5,75 @@ Producer/Consumer architecture :
     sniff thread  →  enqueue(packet)   ultra fast, never blocks
     worker thread →  route(packet)     all detection logic runs here
 
-This separation prevents packet drops under heavy attack traffic.
+Class-based detector instances — each detector is fully encapsulated.
+AlertStore bridges IDS → MongoDB for dashboard consumption.
 """
 
 import signal
 import sys
-import atexit
 from scapy.all import sniff, conf, IPSession
 
-from detectors        import syn, arp, icmp, dns, bruteforce, ftp, dhcp
-from ai.predict       import preload_all
-from core.persistence import save_all
-from core.correlation import correlator
-from core.logger      import Logger
-from core.worker      import enqueue, start_worker, stop_worker, get_stats
-from core.distributed import tracker as dist_tracker
-from core.threat_feed  import threat_feed
-from config            import THREAT_FEED_ENABLED, ABUSEIPDB_API_KEY
+from detectors.syn        import SYNDetector
+from detectors.arp        import ARPDetector
+from detectors.icmp       import ICMPDetector
+from detectors.dns        import DNSDetector
+from detectors.bruteforce import BruteForceDetector
+from detectors.ftp        import FTPDetector
+from detectors.dhcp       import DHCPDetector
+
+from ai.predict           import preload_all
+from core.persistence     import save_all
+from core.correlation     import correlator
+from core.logger          import Logger
+from core.worker          import enqueue, start_worker, stop_worker, get_stats
+from core.distributed     import tracker as dist_tracker
+from core.threat_feed     import threat_feed
+from core.alert_store     import AlertStore
+from config               import THREAT_FEED_ENABLED, ABUSEIPDB_API_KEY, IFACE
 
 # =========================
-# CONFIG
+# ALERT STORE
+# Shared MongoDB connection — injected into all detectors
 # =========================
-IFACE = None    # None = auto-detect from system
+_alert_store = AlertStore()
+
+# =========================
+# DETECTOR INSTANCES
+# All detectors get the same alert_store reference
+# =========================
+_detectors = [
+    SYNDetector(alert_store=_alert_store),
+    ARPDetector(alert_store=_alert_store),
+    ICMPDetector(alert_store=_alert_store),
+    DNSDetector(alert_store=_alert_store),
+    BruteForceDetector(alert_store=_alert_store),
+    FTPDetector(alert_store=_alert_store),
+    DHCPDetector(alert_store=_alert_store),
+]
 
 # =========================
 # PACKET ROUTER
-# Called by worker thread for every packet.
-# Dispatches to all detectors — each ignores packets it doesn't care about.
+# Dispatches every packet to all detectors.
+# Each detector ignores packets it doesn't care about.
 # =========================
 def route(packet):
-    syn.detect(packet)
-    arp.detect_arp(packet)
-    icmp.detect(packet)
-    dns.detect(packet)
-    bruteforce.detect(packet)
-    ftp.detect(packet)
-    dhcp.detect(packet)
+    for detector in _detectors:
+        detector.detect(packet)
+
+# =========================
+# DASHBOARD API HELPERS
+# Your teammate's Node.js API can call these via a local socket or REST.
+# =========================
+def get_detectors() -> list:
+    """Return all detector instances — dashboard uses this for status panel."""
+    return _detectors
+
+def get_all_status() -> list:
+    """Return status dict for every detector."""
+    return [d.get_status() for d in _detectors]
 
 # =========================
 # GRACEFUL SHUTDOWN
-# Drains the queue, saves state, then exits.
 # =========================
 def shutdown(signum=None, frame=None):
     print("\n⏹️  Shutting down AI-IDS...")
@@ -98,7 +127,7 @@ if __name__ == "__main__":
     # start sniffing — main thread only enqueues packets, never processes them
     sniff(
         iface=iface,
-        prn=enqueue,   # ultra fast — just puts packet in queue
-        session=IPSession,  # reassemble fragmented packets before processing
+        prn=enqueue,
+        session=IPSession,
         store=0
     )
