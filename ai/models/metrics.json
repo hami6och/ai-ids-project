@@ -1,0 +1,177 @@
+[
+  {
+    "detector": "syn",
+    "status": "trained",
+    "rows": 53967,
+    "own_rows_at_train": 7189,
+    "trained_at": "2026-05-25 05:10:19.899688",
+    "precision": 0.9961,
+    "recall": 0.9964,
+    "f1": 0.9962,
+    "mode": "best",
+    "rf_f1": 0.9965,
+    "xgb_f1": 0.9962,
+    "confusion_matrix": [
+      [
+        7182,
+        14
+      ],
+      [
+        13,
+        3585
+      ]
+    ],
+    "feature_importance": {
+      "unique_ports": 0.3727,
+      "avg_interval": 0.1801,
+      "pps": 0.1644,
+      "duration": 0.1416,
+      "total_packets": 0.1411
+    },
+    "model_path": "ai/models/syn_model.pkl"
+  },
+  {
+    "detector": "icmp",
+    "status": "trained",
+    "rows": 1113159,
+    "own_rows_at_train": 16282,
+    "trained_at": "2026-05-25 05:12:38.526360",
+    "precision": 0.9581,
+    "recall": 0.9965,
+    "f1": 0.9769,
+    "mode": "best",
+    "rf_f1": 0.978,
+    "xgb_f1": 0.9733,
+    "confusion_matrix": [
+      [
+        145183,
+        3238
+      ],
+      [
+        257,
+        73954
+      ]
+    ],
+    "feature_importance": {
+      "max_packet_size": 0.2899,
+      "duration": 0.2714,
+      "avg_packet_size": 0.2022,
+      "pps": 0.1529,
+      "total_packets": 0.0836
+    },
+    "model_path": "ai/models/icmp_model.pkl"
+  },
+  {
+    "detector": "dns",
+    "status": "trained",
+    "rows": 519106,
+    "own_rows_at_train": 4458,
+    "trained_at": "2026-05-25 05:13:15.668729",
+    "precision": 0.9905,
+    "recall": 0.9879,
+    "f1": 0.9892,
+    "mode": "best",
+    "rf_f1": 0.9922,
+    "xgb_f1": 0.9839,
+    "confusion_matrix": [
+      [
+        50208,
+        503
+      ],
+      [
+        640,
+        52471
+      ]
+    ],
+    "feature_importance": {
+      "avg_qname_len": 0.4037,
+      "duration": 0.2545,
+      "pps": 0.1954,
+      "avg_interval": 0.1094,
+      "top_domain_ratio": 0.0204,
+      "unique_domains": 0.008,
+      "domain_diversity_ratio": 0.0052,
+      "total_requests": 0.0034,
+      "interval_std": 0.0
+    },
+    "model_path": "ai/models/dns_model.pkl"
+  },
+  {
+    "detector": "bruteforce",
+    "status": "trained",
+    "rows": 8154,
+    "own_rows_at_train": 2262,
+    "trained_at": "2026-05-25 05:14:07.282441",
+    "precision": 0.9982,
+    "recall": 1.0,
+    "f1": 0.9991,
+    "mode": "best",
+    "rf_f1": 0.9991,
+    "xgb_f1": 0.9991,
+    "confusion_matrix": [
+      [
+        1086,
+        1
+      ],
+      [
+        0,
+        544
+      ]
+    ],
+    "feature_importance": {
+      "unique_ports": 0.3366,
+      "port_focus_ratio": 0.2081,
+      "avg_interval": 0.2037,
+      "pps": 0.0986,
+      "total_attempts": 0.0689,
+      "duration": 0.053,
+      "syn_ratio": 0.0312,
+      "interval_std": 0.0
+    },
+    "model_path": "ai/models/bruteforce_model.pkl"
+  },
+  {
+    "detector": "ftp",
+    "status": "trained",
+    "rows": 8154,
+    "own_rows_at_train": 406,
+    "trained_at": "2026-05-25 05:15:03.769322",
+    "precision": 0.9982,
+    "recall": 1.0,
+    "f1": 0.9991,
+    "mode": "best",
+    "rf_f1": 0.9991,
+    "xgb_f1": 0.9991,
+    "confusion_matrix": [
+      [
+        1086,
+        1
+      ],
+      [
+        0,
+        544
+      ]
+    ],
+    "feature_importance": {
+      "unique_ports": 0.3366,
+      "port_focus_ratio": 0.2081,
+      "avg_interval": 0.2037,
+      "pps": 0.0986,
+      "total_attempts": 0.0689,
+      "duration": 0.053,
+      "syn_ratio": 0.0312,
+      "interval_std": 0.0
+    },
+    "model_path": "ai/models/ftp_model.pkl"
+  },
+  {
+    "detector": "arp",
+    "status": "skipped",
+    "reason": "no data"
+  },
+  {
+    "detector": "dhcp",
+    "status": "skipped",
+    "reason": "no data"
+  }
+]

@@ -1,0 +1,54 @@
+# =========================
+# Python cache
+# =========================
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# =========================
+# AI models — too large for GitHub
+# =========================
+ai/models/*.pkl
+ai/models/backup/
+ai/models/data_snapshot.json
+# keep metrics.json — small, useful to show F1 scores in README
+!ai/models/metrics.json
+
+# =========================
+# Datasets — too large for GitHub
+# =========================
+datasets/
+data/datasets/
+
+# =========================
+# Runtime data files
+# =========================
+data/*.jsonl
+data/*.db
+data/.state/
+results/
+
+# =========================
+# Node modules — never commit these
+# =========================
+dashboard/backend/node_modules/
+dashboard/frontend/node_modules/
+node_modules/
+
+# =========================
+# Old folders
+# =========================
+phase1/
+
+# =========================
+# Environment & secrets
+# =========================
+.env
+*.env
+
+# =========================
+# OS files
+# =========================
+.DS_Store
+Thumbs.db
