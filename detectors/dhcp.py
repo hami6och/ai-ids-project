@@ -221,7 +221,8 @@ class DHCPDetector:
                 features   = features,
                 extra      = {"src_mac": src_mac, "network_mac_count": network_mac_count,
                               "trigger": "per_mac" if starvation_per_mac else "network_wide",
-                              "detection": "RULE"}
+                              "detection": "RULE"},
+                detector   = self.NAME          # ← AJOUTÉ
             )
             icon = "🚨"
             print(f"{icon} [RULE] [{severity}] [DHCP_STARVATION] {src_mac} | pps: {pps:.2f} | network MACs: {network_mac_count} | AI: {int(ai_conf*100)}%")
@@ -245,7 +246,8 @@ class DHCPDetector:
                     features   = features,
                     extra      = {"src_mac": src_mac, "offer_count": offer_count,
                                   "first_seen": str(datetime.fromtimestamp(self.server_seen.get(src_ip, now))),
-                                  "detection": "RULE"}
+                                  "detection": "RULE"},
+                    detector   = self.NAME          # ← AJOUTÉ
                 )
                 print(f"🚨 [RULE] [CRITICAL] [DHCP_ROGUE_SERVER] Unknown server {src_ip} ({src_mac}) sending OFFERs | offers: {offer_count} | AI: {int(ai_conf*100)}%")
                 self.logger.log(alert)
@@ -265,7 +267,8 @@ class DHCPDetector:
                 target_ip  = "255.255.255.255",
                 severity   = severity_dhcp("DHCP_DECLINE_FLOOD", pps, network_mac_count),
                 features   = features,
-                extra      = {"src_mac": src_mac, "decline_count": decline_count, "detection": "RULE"}
+                extra      = {"src_mac": src_mac, "decline_count": decline_count, "detection": "RULE"},
+                detector   = self.NAME          # ← AJOUTÉ
             )
             print(f"🚨 [RULE] [{alert['severity']}] [DHCP_DECLINE_FLOOD] {src_mac} | declines: {decline_count} | AI: {int(ai_conf*100)}%")
             self.logger.log(alert)
@@ -287,7 +290,8 @@ class DHCPDetector:
                 severity   = severity_dhcp("DHCP_RAPID_CYCLING", pps, network_mac_count),
                 features   = features,
                 extra      = {"src_mac": src_mac, "release_count": release_count,
-                              "discover_count": discover_count, "detection": "RULE"}
+                              "discover_count": discover_count, "detection": "RULE"},
+                detector   = self.NAME          # ← AJOUTÉ
             )
             print(f"🚨 [RULE] [{alert['severity']}] [DHCP_RAPID_CYCLING] {src_mac} | releases: {release_count} discovers: {discover_count} | AI: {int(ai_conf*100)}%")
             self.logger.log(alert)

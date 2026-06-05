@@ -159,7 +159,8 @@ class SYNDetector:
                     features   = features,
                     extra      = {"port": port, "rate": round(rate, 2),
                                   "ai_confidence": ai_conf,
-                                  "detection": "RULE+AI" if ai_alert else "RULE"}
+                                  "detection": "RULE+AI" if ai_alert else "RULE"},
+                    detector   = self.NAME          # ← AJOUTÉ
                 )
                 detection = alert.get("detection", "RULE")
                 icon = "🔥" if detection == "RULE+AI" else "🤖" if "AI" in detection else "🚨"
@@ -182,7 +183,8 @@ class SYNDetector:
                 target_ip  = ip_dst,
                 severity   = "MEDIUM",
                 features   = features,
-                extra      = {**summary, "detection": "RULE"}
+                extra      = {**summary, "detection": "RULE"},
+                detector   = self.NAME          # ← AJOUTÉ
             )
             print(f"🐢 [SLOW] [SLOW_SYN_SCAN] [MEDIUM] {ip_src} → {ip_dst} | "
                   f"ports: {summary.get('unique_ports', 0)} in {summary.get('timespan_sec', 0)}s")
@@ -204,7 +206,8 @@ class SYNDetector:
                 features   = features,
                 extra      = {"ai_confidence": ai_conf,
                               "detection": "RULE+AI" if (unique_ports >= self.port_scan_threshold and ai_alert)
-                                           else "AI_ONLY" if ai_alert else "RULE"}
+                                           else "AI_ONLY" if ai_alert else "RULE"},
+                detector   = self.NAME          # ← AJOUTÉ
             )
             detection = alert.get("detection", "RULE")
             icon = "🔥" if detection == "RULE+AI" else "🤖" if "AI" in detection else "🚨"

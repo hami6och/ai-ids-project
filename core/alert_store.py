@@ -1,270 +1,369 @@
 """
-core/alert_store.py — Alert & Traffic Storage
-===============================================
-Writes to TWO MongoDB collections :
-
-    ai_ids.alerts   → label=1 only (every alert fired)
-                       used for : alert feed, alert stats, severity counts
-
-    ai_ids.traffic  → label=0 + label=1 (every packet processed)
-                       used for : traffic charts, normal vs attack ratio,
-                                  per-IP history, live traffic visualization
-
-If MongoDB is unavailable, falls back gracefully — IDS keeps running,
-everything still goes to JSONL files.
-
-Usage in detectors :
-    # on every packet processed (normal or attack)
-    self.alert_store.insert_traffic(traffic_doc)
-
-    # only when an alert fires
-    self.alert_store.insert(alert_doc)
+core/alert_store.py — Alert & Traffic Storage (SQLite)
+=======================================================
+THREE tables :
+ 
+    alerts   → label=1 seulement
+    traffic  → label=0 + label=1
+    config   → thresholds live (écrit par dashboard, lu par manager.py)
 """
-
+ 
+import sqlite3
+import json
+import os
+import threading
 from datetime import datetime
-from config import (
-    MONGODB_ENABLED, MONGODB_URI,
-    MONGODB_DB, MONGODB_COLLECTION
-)
-
-TRAFFIC_COLLECTION = "traffic"
-
-
+from config import SQLITE_DB_PATH
+ 
+ 
 class AlertStore:
-    """
-    Thin abstraction over MongoDB.
-    Two collections : alerts (label=1) and traffic (all packets).
-    Injected into every detector instance by manager.py.
-    Falls back gracefully if MongoDB is not available.
-    """
-
+ 
     def __init__(self):
-        self._alerts_col  = None
-        self._traffic_col = None
-        self._enabled     = False
+        self._db_path = SQLITE_DB_PATH
+        self._lock    = threading.Lock()
+        self._enabled = False
         self._connect()
-
+ 
     def _connect(self):
-        if not MONGODB_ENABLED:
-            print("   MongoDB    : disabled (MONGODB_ENABLED=False in config.py)")
-            return
         try:
-            from pymongo import MongoClient, DESCENDING
-            client = MongoClient(MONGODB_URI, serverSelectionTimeoutMS=3000)
-            client.server_info()
-            db = client[MONGODB_DB]
-
-            # alerts collection — label=1 only
-            self._alerts_col = db[MONGODB_COLLECTION]
-            self._alerts_col.create_index("timestamp")
-            self._alerts_col.create_index("type")
-            self._alerts_col.create_index("severity")
-            self._alerts_col.create_index("source_ip")
-            self._alerts_col.create_index([("timestamp", DESCENDING)])
-
-            # traffic collection — all packets
-            self._traffic_col = db[TRAFFIC_COLLECTION]
-            self._traffic_col.create_index("timestamp")
-            self._traffic_col.create_index("source_ip")
-            self._traffic_col.create_index("detector")
-            self._traffic_col.create_index("label")
-            self._traffic_col.create_index([("timestamp", DESCENDING)])
-
+            os.makedirs(os.path.dirname(self._db_path), exist_ok=True)
+            conn = sqlite3.connect(self._db_path)
+            self._create_tables(conn)
+            conn.close()
             self._enabled = True
-            print(f"   MongoDB    : connected ✅ ({MONGODB_URI}/{MONGODB_DB})")
-            print(f"                collections: {MONGODB_COLLECTION} (alerts) | {TRAFFIC_COLLECTION} (traffic)")
-
+            print(f"   SQLite     : connected ✅ ({self._db_path})")
         except Exception as e:
-            print(f"   MongoDB    : unavailable — {e}")
-            print(f"                (data stored in JSONL only)")
+            print(f"   SQLite     : unavailable — {e}")
             self._enabled = False
-
+ 
+    def _get_conn(self):
+        return sqlite3.connect(self._db_path, check_same_thread=False)
+ 
+    def _create_tables(self, conn):
+        cursor = conn.cursor()
+ 
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS alerts (
+                id            INTEGER PRIMARY KEY AUTOINCREMENT,
+                timestamp     TEXT,
+                type          TEXT,
+                source_ip     TEXT,
+                target_ip     TEXT,
+                severity      TEXT,
+                detection     TEXT,
+                detector      TEXT,
+                label         INTEGER DEFAULT 1,
+                ai_confidence REAL,
+                extra_json    TEXT,
+                inserted_at   TEXT
+            )
+        """)
+ 
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS traffic (
+                id          INTEGER PRIMARY KEY AUTOINCREMENT,
+                timestamp   TEXT,
+                detector    TEXT,
+                source_ip   TEXT,
+                target_ip   TEXT,
+                label       INTEGER DEFAULT 0,
+                pps         REAL,
+                duration    REAL,
+                extra_json  TEXT,
+                inserted_at TEXT
+            )
+        """)
+ 
+        # ← NEW : config table for live threshold updates
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS config (
+                key        TEXT PRIMARY KEY,
+                value      REAL NOT NULL,
+                updated_at TEXT
+            )
+        """)
+ 
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_alerts_timestamp  ON alerts(timestamp)")
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_alerts_severity   ON alerts(severity)")
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_alerts_type       ON alerts(type)")
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_alerts_source_ip  ON alerts(source_ip)")
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_alerts_detector   ON alerts(detector)")
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_traffic_timestamp ON traffic(timestamp)")
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_traffic_source_ip ON traffic(source_ip)")
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_traffic_detector  ON traffic(detector)")
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_traffic_label     ON traffic(label)")
+ 
+        conn.commit()
+ 
     # =========================
-    # ALERTS — label=1 only
+    # ALERTS
     # =========================
     def insert(self, alert: dict):
-        """
-        Insert one alert into alerts collection.
-        Called by every detector when an alert fires.
-        """
-        if not self._enabled or self._alerts_col is None:
+        if not self._enabled:
             return
         try:
-            doc = {**alert, "inserted_at": str(datetime.now())}
-            self._alerts_col.insert_one(doc)
+            known = {"timestamp", "type", "source_ip", "target_ip",
+                     "severity", "detection", "detector", "label", "ai_confidence"}
+            extra = {k: v for k, v in alert.items() if k not in known}
+            with self._lock:
+                conn = self._get_conn()
+                conn.execute("""
+                    INSERT INTO alerts
+                    (timestamp, type, source_ip, target_ip, severity,
+                     detection, detector, label, ai_confidence, extra_json, inserted_at)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """, (
+                    alert.get("timestamp", str(datetime.now())),
+                    alert.get("type", ""),
+                    alert.get("source_ip", ""),
+                    alert.get("target_ip", ""),
+                    alert.get("severity", ""),
+                    alert.get("detection", "RULE"),
+                    alert.get("detector", ""),
+                    alert.get("label", 1),
+                    alert.get("ai_confidence", 0.0),
+                    json.dumps(extra, default=str),
+                    str(datetime.now())
+                ))
+                conn.commit()
+                conn.close()
+ 
+            # auto-insert label=1 in traffic so charts show real attack ratio
+            self.insert_traffic({
+                "timestamp" : alert.get("timestamp", str(datetime.now())),
+                "detector"  : alert.get("detector", ""),
+                "source_ip" : alert.get("source_ip", ""),
+                "target_ip" : alert.get("target_ip", ""),
+                "label"     : 1,
+                "pps"       : alert.get("pps", 0.0),
+                "duration"  : alert.get("duration", 0.0),
+            })
         except Exception:
             pass
-
+ 
     # =========================
-    # TRAFFIC — every packet
+    # TRAFFIC
     # =========================
-    def insert_traffic(self, traffic_doc: dict):
-        """
-        Insert one traffic record into traffic collection.
-        Called by every detector on every packet processed (normal or attack).
-        label=0 → normal traffic
-        label=1 → attack traffic (also in alerts collection)
-        """
-        if not self._enabled or self._traffic_col is None:
+    def insert_traffic(self, doc: dict):
+        if not self._enabled:
             return
         try:
-            doc = {**traffic_doc, "inserted_at": str(datetime.now())}
-            self._traffic_col.insert_one(doc)
+            known = {"timestamp", "detector", "source_ip", "target_ip",
+                     "label", "pps", "duration"}
+            extra = {k: v for k, v in doc.items() if k not in known}
+            with self._lock:
+                conn = self._get_conn()
+                conn.execute("""
+                    INSERT INTO traffic
+                    (timestamp, detector, source_ip, target_ip,
+                     label, pps, duration, extra_json, inserted_at)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """, (
+                    doc.get("timestamp", str(datetime.now())),
+                    doc.get("detector", ""),
+                    doc.get("source_ip", ""),
+                    doc.get("target_ip", ""),
+                    doc.get("label", 0),
+                    doc.get("pps", 0.0),
+                    doc.get("duration", 0.0),
+                    json.dumps(extra, default=str),
+                    str(datetime.now())
+                ))
+                conn.commit()
+                conn.close()
         except Exception:
             pass
-
+ 
+    # =========================
+    # CONFIG — live thresholds
+    # =========================
+    def write_config(self, key: str, value: float):
+        """Dashboard writes here when user changes a threshold."""
+        if not self._enabled:
+            return
+        try:
+            with self._lock:
+                conn = self._get_conn()
+                conn.execute("""
+                    INSERT INTO config (key, value, updated_at)
+                    VALUES (?, ?, ?)
+                    ON CONFLICT(key) DO UPDATE
+                    SET value=excluded.value, updated_at=excluded.updated_at
+                """, (key, value, str(datetime.now())))
+                conn.commit()
+                conn.close()
+        except Exception:
+            pass
+ 
+    def read_config(self) -> dict:
+        """manager.py reads this every 30s to apply changes to detectors."""
+        if not self._enabled:
+            return {}
+        try:
+            with self._lock:
+                conn = self._get_conn()
+                rows = conn.execute("SELECT key, value FROM config").fetchall()
+                conn.close()
+            return {r[0]: r[1] for r in rows}
+        except Exception:
+            return {}
+ 
     # =========================
     # DASHBOARD QUERIES — alerts
     # =========================
     def get_recent_alerts(self, limit: int = 50, severity: str = None) -> list:
-        """Return most recent alerts — dashboard alert feed."""
         if not self._enabled:
             return []
         try:
-            query  = {"severity": severity} if severity else {}
-            cursor = self._alerts_col.find(
-                query, {"_id": 0}
-            ).sort("timestamp", -1).limit(limit)
-            return list(cursor)
+            with self._lock:
+                conn = self._get_conn()
+                if severity:
+                    rows = conn.execute(
+                        "SELECT * FROM alerts WHERE severity=? ORDER BY timestamp DESC LIMIT ?",
+                        (severity, limit)
+                    ).fetchall()
+                else:
+                    rows = conn.execute(
+                        "SELECT * FROM alerts ORDER BY timestamp DESC LIMIT ?", (limit,)
+                    ).fetchall()
+                cols = [d[0] for d in conn.execute("SELECT * FROM alerts LIMIT 0").description]
+                conn.close()
+            result = []
+            for row in rows:
+                d = dict(zip(cols, row))
+                if d.get("extra_json"):
+                    d.update(json.loads(d.pop("extra_json")))
+                result.append(d)
+            return result
         except Exception:
             return []
-
+ 
     def get_alert_stats(self) -> dict:
-        """Alert statistics for dashboard overview panel."""
         if not self._enabled:
             return {}
         try:
-            total    = self._alerts_col.count_documents({})
-            critical = self._alerts_col.count_documents({"severity": "CRITICAL"})
-            high     = self._alerts_col.count_documents({"severity": "HIGH"})
-            medium   = self._alerts_col.count_documents({"severity": "MEDIUM"})
-            low      = self._alerts_col.count_documents({"severity": "LOW"})
-            by_type  = self._alerts_col.aggregate([
-                {"$group": {"_id": "$type", "count": {"$sum": 1}}},
-                {"$sort": {"count": -1}},
-                {"$limit": 10}
-            ])
-            by_detection = self._alerts_col.aggregate([
-                {"$group": {"_id": "$detection", "count": {"$sum": 1}}}
-            ])
-            top_ips = self._alerts_col.aggregate([
-                {"$group": {"_id": "$source_ip", "count": {"$sum": 1}}},
-                {"$sort": {"count": -1}},
-                {"$limit": 10}
-            ])
+            with self._lock:
+                conn = self._get_conn()
+                total    = conn.execute("SELECT COUNT(*) FROM alerts").fetchone()[0]
+                critical = conn.execute("SELECT COUNT(*) FROM alerts WHERE severity='CRITICAL'").fetchone()[0]
+                high     = conn.execute("SELECT COUNT(*) FROM alerts WHERE severity='HIGH'").fetchone()[0]
+                medium   = conn.execute("SELECT COUNT(*) FROM alerts WHERE severity='MEDIUM'").fetchone()[0]
+                low      = conn.execute("SELECT COUNT(*) FROM alerts WHERE severity='LOW'").fetchone()[0]
+                by_type  = conn.execute(
+                    "SELECT type, COUNT(*) as c FROM alerts GROUP BY type ORDER BY c DESC LIMIT 10"
+                ).fetchall()
+                by_det   = conn.execute(
+                    "SELECT detection, COUNT(*) as c FROM alerts GROUP BY detection"
+                ).fetchall()
+                top_ips  = conn.execute(
+                    "SELECT source_ip, COUNT(*) as c FROM alerts GROUP BY source_ip ORDER BY c DESC LIMIT 10"
+                ).fetchall()
+                conn.close()
             return {
                 "total"       : total,
                 "critical"    : critical,
                 "high"        : high,
                 "medium"      : medium,
                 "low"         : low,
-                "by_type"     : {r["_id"]: r["count"] for r in by_type},
-                "by_detection": {r["_id"]: r["count"] for r in by_detection},
-                "top_ips"     : {r["_id"]: r["count"] for r in top_ips},
+                "by_type"     : {r[0]: r[1] for r in by_type},
+                "by_detection": {r[0]: r[1] for r in by_det},
+                "top_ips"     : {r[0]: r[1] for r in top_ips},
             }
         except Exception:
             return {}
-
+ 
     # =========================
     # DASHBOARD QUERIES — traffic
     # =========================
     def get_traffic_stats(self) -> dict:
-        """Traffic statistics — normal vs attack ratio."""
         if not self._enabled:
             return {}
         try:
-            total   = self._traffic_col.count_documents({})
-            normal  = self._traffic_col.count_documents({"label": 0})
-            attacks = self._traffic_col.count_documents({"label": 1})
-            by_detector = self._traffic_col.aggregate([
-                {"$group": {"_id": "$detector", "count": {"$sum": 1}}},
-                {"$sort": {"count": -1}}
-            ])
+            with self._lock:
+                conn = self._get_conn()
+                total   = conn.execute("SELECT COUNT(*) FROM traffic").fetchone()[0]
+                normal  = conn.execute("SELECT COUNT(*) FROM traffic WHERE label=0").fetchone()[0]
+                attacks = conn.execute("SELECT COUNT(*) FROM traffic WHERE label=1").fetchone()[0]
+                by_det  = conn.execute(
+                    "SELECT detector, COUNT(*) as c FROM traffic GROUP BY detector ORDER BY c DESC"
+                ).fetchall()
+                conn.close()
             return {
                 "total"       : total,
                 "normal"      : normal,
                 "attacks"     : attacks,
                 "attack_ratio": round(attacks / max(total, 1) * 100, 2),
-                "by_detector" : {r["_id"]: r["count"] for r in by_detector},
+                "by_detector" : {r[0]: r[1] for r in by_det},
             }
         except Exception:
             return {}
-
-    def get_recent_traffic(self, limit: int = 100, detector: str = None,
-                           label: int = None) -> list:
-        """Return recent traffic records — dashboard live traffic view."""
-        if not self._enabled:
-            return []
-        try:
-            query = {}
-            if detector is not None:
-                query["detector"] = detector
-            if label is not None:
-                query["label"] = label
-            cursor = self._traffic_col.find(
-                query, {"_id": 0}
-            ).sort("timestamp", -1).limit(limit)
-            return list(cursor)
-        except Exception:
-            return []
-
-    def get_ip_history(self, ip: str, limit: int = 100) -> list:
-        """Return all traffic records for a specific IP — per-IP drill down."""
-        if not self._enabled:
-            return []
-        try:
-            cursor = self._traffic_col.find(
-                {"source_ip": ip}, {"_id": 0}
-            ).sort("timestamp", -1).limit(limit)
-            return list(cursor)
-        except Exception:
-            return []
-
+ 
     def get_traffic_timeline(self, hours: int = 24) -> list:
-        """Traffic per hour over last N hours — timeline chart."""
         if not self._enabled:
             return []
         try:
-            from datetime import timedelta
-            pipeline = [
-                {"$addFields": {
-                    "hour": {"$dateToString": {
-                        "format": "%Y-%m-%d %H:00",
-                        "date": {"$toDate": "$timestamp"}
-                    }}
-                }},
-                {"$group": {
-                    "_id"    : "$hour",
-                    "total"  : {"$sum": 1},
-                    "attacks": {"$sum": "$label"},
-                    "normal" : {"$sum": {"$subtract": [1, "$label"]}}
-                }},
-                {"$sort": {"_id": -1}},
-                {"$limit": hours}
+            with self._lock:
+                conn = self._get_conn()
+                rows = conn.execute("""
+                    SELECT
+                        strftime('%Y-%m-%d %H:00', timestamp) as hour,
+                        COUNT(*) as total,
+                        SUM(label) as attacks,
+                        COUNT(*) - SUM(label) as normal
+                    FROM traffic
+                    WHERE timestamp >= datetime('now', ? || ' hours')
+                    GROUP BY hour
+                    ORDER BY hour DESC
+                """, (f"-{hours}",)).fetchall()
+                conn.close()
+            return [
+                {"hour": r[0], "total": r[1], "attacks": r[2], "normal": r[3]}
+                for r in rows
             ]
-            return list(self._traffic_col.aggregate(pipeline))
         except Exception:
             return []
-
+ 
+    def get_ip_history(self, ip: str, limit: int = 100) -> list:
+        if not self._enabled:
+            return []
+        try:
+            with self._lock:
+                conn = self._get_conn()
+                rows = conn.execute(
+                    "SELECT * FROM traffic WHERE source_ip=? ORDER BY timestamp DESC LIMIT ?",
+                    (ip, limit)
+                ).fetchall()
+                cols = [d[0] for d in conn.execute("SELECT * FROM traffic LIMIT 0").description]
+                conn.close()
+            result = []
+            for row in rows:
+                d = dict(zip(cols, row))
+                if d.get("extra_json"):
+                    d.update(json.loads(d.pop("extra_json")))
+                result.append(d)
+            return result
+        except Exception:
+            return []
+ 
     # =========================
     # UTILS
     # =========================
     @property
     def is_connected(self) -> bool:
         return self._enabled
-
+ 
     def get_stats(self) -> dict:
-        """Combined stats — backward compatible."""
         return {
             "alerts" : self.get_alert_stats(),
             "traffic": self.get_traffic_stats(),
         }
-
-
+ 
+ 
 # =========================
-# SINGLETON — initialized by manager.py
+# SINGLETON
 # =========================
 alert_store = AlertStore.__new__(AlertStore)
-alert_store._alerts_col  = None
-alert_store._traffic_col = None
-alert_store._enabled     = False
+alert_store._db_path = None
+alert_store._lock    = threading.Lock()
+alert_store._enabled = False
+

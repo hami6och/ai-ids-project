@@ -39,11 +39,12 @@ ICMP_AI_MIN_PACKETS     = 10
 # DNS DETECTOR
 # =========================
 DNS_TIME_WINDOW         = 5
-DNS_REQUEST_THRESHOLD   = 20
+DNS_REQUEST_THRESHOLD   = 30    # raised from 20 — 20 fires on normal page loads
 DNS_TUNNEL_QNAME_LEN    = 50
 DNS_ALERT_COOLDOWN      = 20
 DNS_PRUNE_INTERVAL      = 60
-DNS_AI_MIN_REQUESTS     = 5
+DNS_AI_MIN_REQUESTS     = 10    # raised from 5 — fewer = normal browsing
+DNS_FLOOD_MIN_PPS       = 10    # min pps to fire DNS_FLOOD
 
 # =========================
 # BRUTEFORCE DETECTOR
@@ -89,7 +90,11 @@ DHCP_RELEASE_THRESHOLD  = 8
 DHCP_LEGITIMATE_SERVERS = {
     "192.168.1.1", "192.168.1.254",
     "10.0.0.1",
-    "192.168.68.1", "192.168.68.2", "192.168.68.254"
+    "192.168.68.1", "192.168.68.2", "192.168.68.254",
+    "192.168.100.1",
+    "192.168.56.254", "192.168.24.254"
+    # NOTE : MAC addresses removed — DHCP_LEGITIMATE_SERVERS must be IP addresses only
+    # The detector checks src_ip against this set, not MAC addresses
 }
 
 # =========================
@@ -101,9 +106,9 @@ MODELS_DIR              = "ai/models"
 # =========================
 # PER-DETECTOR AI THRESHOLDS
 # =========================
-AI_THRESHOLD_SYN        = 0.60
+AI_THRESHOLD_SYN        = 0.75   # raised — 0.60 fires on normal HTTPS browsing
 AI_THRESHOLD_ICMP       = 0.80
-AI_THRESHOLD_DNS        = 0.60
+AI_THRESHOLD_DNS        = 0.75   # raised — 0.60 fires on normal DNS lookups
 AI_THRESHOLD_BRUTEFORCE = 0.80
 AI_THRESHOLD_FTP        = 0.80
 AI_THRESHOLD_ARP        = 0.80
@@ -194,17 +199,15 @@ MULTI_SOURCE_COOLDOWN   = 120
 # ICMP REDIRECT DETECTION
 # =========================
 KNOWN_GATEWAYS          = {
-    "192.168.68.2",
-    "192.168.68.1",
+    "192.168.68.1", "192.168.68.2",
     "10.0.0.1",
     "192.168.1.1",
+    "192.168.100.1",
+    "192.168.56.254"
 }
 ICMP_REDIRECT_COOLDOWN  = 60
 
 # =========================
-# DATABASE — MongoDB
+# DATABASE — SQLite
 # =========================
-MONGODB_ENABLED         = True
-MONGODB_URI             = "mongodb://localhost:27017"
-MONGODB_DB              = "ai_ids"
-MONGODB_COLLECTION      = "alerts"
+SQLITE_DB_PATH          = "data/ids.db"

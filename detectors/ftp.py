@@ -203,7 +203,8 @@ class FTPDetector:
                     features   = features,
                     extra      = {"ai_confidence": ai_conf,
                                   "detection": "RULE+AI" if (total >= self.attempt_threshold and ai_alert)
-                                               else "AI_ONLY" if ai_alert else "RULE"}
+                                               else "AI_ONLY" if ai_alert else "RULE"},
+                    detector   = self.NAME          # ← AJOUTÉ
                 )
                 detection = alert.get("detection", "RULE")
                 icon = "🔥" if detection == "RULE+AI" else "🤖" if "AI" in detection else "🚨"
@@ -275,7 +276,8 @@ class FTPDetector:
                         extra      = {"bounce_target": target_ip, "bounce_port": target_port,
                                       "ai_confidence": ai_conf,
                                       "detection": "RULE+AI" if (features["third_party_targets"] >= self.bounce_threshold and ai_alert)
-                                                   else "AI_ONLY" if ai_alert else "RULE"}
+                                                   else "AI_ONLY" if ai_alert else "RULE"},
+                        detector   = self.NAME          # ← AJOUTÉ
                     )
                     detection = alert.get("detection", "RULE")
                     icon = "🔥" if detection == "RULE+AI" else "🤖" if "AI" in detection else "🚨"

@@ -176,7 +176,8 @@ class ARPDetector:
                 severity   = severity,
                 features   = features,
                 extra      = {"source_mac": mac, "score": score,
-                              "ai_confidence": ai_conf, "detection": detection}
+                              "ai_confidence": ai_conf, "detection": detection},
+                detector   = self.NAME          # ← AJOUTÉ
             )
             icon = "🔥" if detection == "RULE+AI" else "🤖" if "AI" in detection else "🚨"
             print(f"{icon} [{detection}] [ARP_SPOOFING] [{severity}] {ip} | score: {score} | net_rate: {network_arp_rate:.1f}/s | AI: {int(ai_conf*100)}%")

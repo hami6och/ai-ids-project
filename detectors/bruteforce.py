@@ -202,7 +202,8 @@ class BruteForceDetector:
                 features   = features,
                 extra      = {"target_port": dport, "unique_sources": unique_sources,
                               "sample_sources": sample_sources,
-                              "window_sec": self.multi_src_window, "detection": "RULE"}
+                              "window_sec": self.multi_src_window, "detection": "RULE"},
+                detector   = self.NAME          # ← AJOUTÉ
             )
             print(f"🚨 [RULE] [MULTI_SOURCE_BRUTE] [HIGH] {unique_sources} sources → "
                   f"{dst_ip}:{dport} | sample: {sample_sources[:3]}")
@@ -222,7 +223,8 @@ class BruteForceDetector:
                 target_ip  = dst_ip,
                 severity   = "MEDIUM",
                 features   = features,
-                extra      = {**summary, "detection": "RULE"}
+                extra      = {**summary, "detection": "RULE"},
+                detector   = self.NAME          # ← AJOUTÉ
             )
             print(f"🐢 [SLOW] [SLOW_BRUTE_FORCE] [MEDIUM] {src_ip} → {dst_ip} | "
                   f"attempts: {summary.get('unique_attempts', 0)} in {summary.get('timespan_sec', 0)}s")
@@ -256,7 +258,8 @@ class BruteForceDetector:
                 features   = features,
                 extra      = {"ai_confidence": ai_conf,
                               "detection": "RULE+AI" if ai_alert else
-                                           "AI_ONLY" if "AI" in alert_type else "RULE"}
+                                           "AI_ONLY" if "AI" in alert_type else "RULE"},
+                detector   = self.NAME          # ← AJOUTÉ
             )
             detection = alert.get("detection", "RULE")
             icon = "🔥" if detection == "RULE+AI" else "🤖" if "AI" in detection else "🚨"

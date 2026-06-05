@@ -25,7 +25,7 @@ from config import (
     AI_THRESHOLD_DNS,
     DNS_TIME_WINDOW, DNS_REQUEST_THRESHOLD, DNS_TUNNEL_QNAME_LEN,
     DNS_ALERT_COOLDOWN, DNS_PRUNE_INTERVAL, DNS_AI_MIN_REQUESTS,
-    WHITELIST, IFACE
+    WHITELIST, IFACE, DNS_FLOOD_MIN_PPS
 )
 
 QTYPE_MAP = {
@@ -50,6 +50,7 @@ class DNSDetector:
         self.alert_cooldown   = DNS_ALERT_COOLDOWN
         self.prune_interval   = DNS_PRUNE_INTERVAL
         self.ai_min_requests  = DNS_AI_MIN_REQUESTS
+        self.flood_min_pps    = DNS_FLOOD_MIN_PPS
         self.ai_threshold     = AI_THRESHOLD_DNS
 
         # sub-components
@@ -130,7 +131,7 @@ class DNSDetector:
             return
         if packet[DNS].qr != 0:
             return
-        if ip_dst.startswith(("224.", "239.", "255.")):
+        if ip_dst.startswith(("224.", "239.", "255.", "ff02:", "ff01:", "ff0e:")):
             return
 
         if packet.haslayer(DNSQR):
@@ -185,7 +186,9 @@ class DNSDetector:
                 target_ip  = ip_dst,
                 severity   = "LOW",
                 features   = features,
-                extra      = {**summary, "detection": "RULE"}
+                extra      = {**summary, "detection": "RULE"},
+                detector   = self.NAME          # ← AJOUTÉ
+
             )
             print(f"🐢 [SLOW] [SLOW_DNS_FLOOD] [LOW] {ip_src} → {ip_dst} | "
                   f"requests: {summary.get('unique_requests', 0)} in {summary.get('timespan_sec', 0)}s")
@@ -204,10 +207,11 @@ class DNSDetector:
         alert_type = None
         if features["avg_qname_len"] > self.tunnel_qname_len:
             alert_type = "DNS_TUNNEL"
-        elif features["total_requests"] >= self.request_threshold:
+        elif features["total_requests"] >= self.request_threshold and features["pps"] >= self.flood_min_pps:
             alert_type = "DNS_FLOOD"
 
-        if not alert_type and ai_alert:
+        # DNS_AI requires at least 10 requests — fewer = normal browsing
+        if not alert_type and ai_alert and features["total_requests"] >= 10:
             alert_type = "DNS_AI"
 
         if alert_type:
@@ -219,7 +223,9 @@ class DNSDetector:
                 features   = features,
                 extra      = {"ai_confidence": ai_conf,
                               "detection": "RULE+AI" if ai_alert else
-                                           "AI_ONLY" if alert_type == "DNS_AI" else "RULE"}
+                                           "AI_ONLY" if alert_type == "DNS_AI" else "RULE"},
+                detector   = self.NAME          # ← AJOUTÉ
+
             )
             detection = alert.get("detection", "RULE")
             icon = "🔥" if detection == "RULE+AI" else "🤖" if "AI" in detection else "🚨"

@@ -1,16 +1,17 @@
 from datetime import datetime
-
-
+ 
 # =========================
 # ALERT BUILDER
 # =========================
 def build_alert(alert_type: str, source_ip: str, target_ip: str,
-                severity: str, features: dict, extra: dict = None) -> dict:
+                severity: str, features: dict, extra: dict = None,
+                detector: str = "") -> dict:
     """
     Build a standardized alert dict.
     `features` is spread in so every feature is a top-level key.
     `extra` is for detector-specific fields (e.g. port, mac, score).
-
+    `detector` is the detector name (syn, arp, icmp...) — used by dashboard.
+ 
     Usage:
         alert = build_alert(
             alert_type = "SYN_FLOOD",
@@ -18,7 +19,8 @@ def build_alert(alert_type: str, source_ip: str, target_ip: str,
             target_ip  = ip_dst,
             severity   = "HIGH",
             features   = features,
-            extra      = {"port": port, "rate": rate}
+            extra      = {"port": port, "rate": rate},
+            detector   = "syn"
         )
     """
     alert = {
@@ -28,13 +30,13 @@ def build_alert(alert_type: str, source_ip: str, target_ip: str,
         "target_ip" : target_ip,
         "severity"  : severity,
         "label"     : 1,
+        "detector"  : detector,
         **features
     }
     if extra:
         alert.update(extra)
     return alert
-
-
+ 
 # =========================
 # SEVERITY — per detector
 # =========================
@@ -42,47 +44,47 @@ def severity_syn_flood(rate: float) -> str:
     if rate > 40: return "CRITICAL"
     if rate > 20: return "HIGH"
     return "MEDIUM"
-
+ 
 def severity_syn_scan(unique_ports: int) -> str:
     if unique_ports > 50: return "CRITICAL"
     if unique_ports > 20: return "HIGH"
     if unique_ports > 10: return "MEDIUM"
     return "LOW"
-
+ 
 def severity_arp(score: int) -> str:
     if score >= 9: return "HIGH"
     if score >= 6: return "MEDIUM"
     return "LOW"
-
+ 
 def severity_icmp(pps: float, flood_rate: float) -> str:
     if pps > flood_rate * 4: return "CRITICAL"
     if pps > flood_rate * 2: return "HIGH"
     if pps > flood_rate:     return "MEDIUM"
     return "LOW"
-
+ 
 def severity_dns(total: int, pps: float) -> str:
     if total > 100 or pps > 30: return "CRITICAL"
     if total > 50  or pps > 15: return "HIGH"
     if total > 30  or pps > 8:  return "MEDIUM"
     return "LOW"
-
+ 
 def severity_bruteforce(total_attempts: int) -> str:
     if total_attempts > 100: return "CRITICAL"
     if total_attempts > 40:  return "HIGH"
     if total_attempts > 20:  return "MEDIUM"
     return "LOW"
-
+ 
 def severity_ftp(alert_type: str, pps: float, total: int) -> str:
     if alert_type == "FTP_BOUNCE":
-        return "HIGH"    # bounce is always serious — it abuses your own server
+        return "HIGH"
     if total > 100 or pps > 20: return "CRITICAL"
     if total > 50  or pps > 10: return "HIGH"
     if total > 20  or pps > 5:  return "MEDIUM"
     return "LOW"
-
+ 
 def severity_dhcp(alert_type: str, pps: float, unique_macs: int) -> str:
     if alert_type == "DHCP_ROGUE_SERVER":
-        return "CRITICAL"   # rogue server = full MITM, always critical
+        return "CRITICAL"
     if pps > 100 or unique_macs > 100: return "CRITICAL"
     if pps > 50  or unique_macs > 50:  return "HIGH"
     if pps > 20  or unique_macs > 20:  return "MEDIUM"

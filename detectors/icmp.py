@@ -111,7 +111,8 @@ class ICMPDetector:
                         features   = {"redirect_gateway": str(redirect_gw)},
                         extra      = {"redirect_gw": str(redirect_gw),
                                       "known_gws": list(self.known_gateways),
-                                      "detection": "RULE"}
+                                      "detection": "RULE"},
+                        detector   = self.NAME          # ← AJOUTÉ
                     )
                     print(f"🚨 [RULE] [ICMP_REDIRECT] [HIGH] {ip_src} → {ip_dst} "
                           f"| redirecting via: {redirect_gw}")
@@ -182,7 +183,8 @@ class ICMPDetector:
                 features   = features,
                 extra      = {"ai_confidence": ai_conf,
                               "detection": "RULE+AI" if (pps > self.flood_rate and ai_alert)
-                                           else "AI_ONLY" if ai_alert else "RULE"}
+                                           else "AI_ONLY" if ai_alert else "RULE"},
+                detector   = self.NAME          # ← AJOUTÉ
             )
             detection = alert.get("detection", "RULE")
             icon = "🔥" if detection == "RULE+AI" else "🤖" if "AI" in detection else "🚨"
