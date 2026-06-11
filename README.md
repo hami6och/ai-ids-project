@@ -1,61 +1,107 @@
 # 🛡️ AI-IDS — Intelligent Intrusion Detection System
+
 ![Python](https://img.shields.io/badge/Python-14354C?style=for-the-badge&logo=python&logoColor=white)
 ![Scapy](https://img.shields.io/badge/Scapy-2C2D72?style=for-the-badge&logo=python&logoColor=white)
 ![ML](https://img.shields.io/badge/Machine_Learning-FF6F00?style=for-the-badge&logo=scikitlearn&logoColor=white)
-![MongoDB](https://img.shields.io/badge/MongoDB-4EA94B?style=for-the-badge&logo=mongodb&logoColor=white)
+![SQLite](https://img.shields.io/badge/SQLite-07405E?style=for-the-badge&logo=sqlite&logoColor=white)
 ![React](https://img.shields.io/badge/React-20232A?style=for-the-badge&logo=react&logoColor=61DAFB)
+![Node.js](https://img.shields.io/badge/Node.js-339933?style=for-the-badge&logo=nodedotjs&logoColor=white)
 
 ## 📌 Overview
-**AI-IDS** is a network intrusion detection system built in Python using **Scapy** for real-time packet analysis. It combines **rule-based detection** with a **machine learning layer** (coming soon) to identify and alert on a wide range of network attacks.
 
-The system logs every packet as a feature vector to **JSONL datasets**, making it ML-ready from day one. Each detector runs independently or together under a single unified manager.
+**AI-IDS** is a full-stack network intrusion detection system built as a 4th-year cybersecurity engineering capstone at **Université Saad Dahleb Blida 1**.
 
-> ⚠️ **This project is intended for ethical and educational use only.**  
+It combines **rule-based detection** with a **Random Forest + XGBoost ML layer** to detect and classify 7 attack categories in real time. All traffic is stored in a local **SQLite** database and visualized through a **React dashboard** with live config updates.
+
+> ⚠️ **Intended for ethical and educational use only.**  
 > Deploy only on networks you own or have explicit permission to monitor.
 
 ---
 
-## 🎯 Detectors
+## 🏗️ Architecture
 
-### 🔴 SYN Flood & SYN Scan — `detectors/syn.py`
-- Detects **SYN flood** attacks by tracking per-port packet rates using a sliding window
-- Detects **SYN scan / port scanning** by counting unique destination ports per source IP
-- Severity tiers: LOW → MEDIUM → HIGH → CRITICAL
-
-### 🟠 ARP Spoofing — `detectors/arp.py`
-- Monitors ARP replies for MAC address changes on known IPs
-- Detects **gratuitous ARP** and **broadcast poisoning**
-- Uses a **suspicion scoring system** (MAC change, rate, uniqueness, broadcast)
-- Severity tiers: LOW → MEDIUM → HIGH
-
-### 🟡 ICMP Flood — `detectors/icmp.py`
-- Tracks Echo Request (ping) rates per source IP using a sliding window
-- Logs **average and max packet size** to detect amplification attempts
-- Severity tiers: LOW → MEDIUM → HIGH → CRITICAL
-
-### 🟢 DNS Flood & DNS Tunnel — `detectors/dns.py`
-- Detects **DNS flood** by monitoring query rates per source IP
-- Detects **DNS tunneling** via average query name length (`avg_qname_len > 50`)
-- Rich feature set: domain diversity ratio, top domain ratio, query type distribution
-- Severity tiers: LOW → MEDIUM → HIGH → CRITICAL
-
-### 🔵 Brute Force & Credential Stuffing — `detectors/bruteforce.py`
-- Monitors authentication ports only: **SSH (22), FTP (21), Telnet (23)**
-- Detects **brute force** via high SYN ratio + focused port targeting
-- Detects **credential stuffing** via spread across multiple ports
-- Filters out false positives: private IP check, self-traffic skip, whitelist
-- Severity tiers: LOW → MEDIUM → HIGH → CRITICAL
+```
+Network Traffic
+      │
+      ▼
+  Scapy sniff()
+      │
+      ▼
+  Queue (10,000 packets)
+      │
+      ▼
+  Worker Thread
+      │
+      ▼
+┌──────────────────────────────────────────┐
+│              7 Detectors                 │
+│  SYN · ARP · ICMP · DNS                 │
+│  BruteForce · FTP · DHCP                │
+│                                          │
+│  Rule-Based ──→ AI/ML Layer             │
+│  (thresholds)    (RF + XGBoost)         │
+└──────────────────────────────────────────┘
+      │
+      ▼
+┌──────────────────────────────────────────┐
+│  Correlation + Long Window               │
+│  + Distributed Detection                 │
+└──────────────────────────────────────────┘
+      │
+      ▼
+┌──────────────────────────────────────────┐
+│  Terminal  │  JSONL logs  │  SQLite DB   │
+└──────────────────────────────────────────┘
+      │
+      ▼
+  React Dashboard (port 3000)
+  Node.js API  (port 3001)
+```
 
 ---
 
-## 🧠 Core Module — `core/`
-Shared logic extracted from all detectors into three reusable modules:
+## 🎯 Detection Layers
 
-| File | Responsibility |
+### 🔴 Rule-Based Detection
+
+| Detector | Attack Types Detected |
 |---|---|
-| `core/logger.py` | Persistent JSONL logger — opens once, flushes every write, closes on exit |
-| `core/window.py` | `clean_old()` sliding window eviction + `prune_stale()` memory cleanup |
-| `core/alerting.py` | `build_alert()` standardized alert builder + per-detector severity functions |
+| `SYNDetector` | SYN_FLOOD · SYN_SCAN · SLOW_SYN_SCAN |
+| `ICMPDetector` | ICMP_FLOOD · ICMP_REDIRECT |
+| `DNSDetector` | DNS_FLOOD · DNS_TUNNEL · DNS_AI · SLOW_DNS_FLOOD |
+| `BruteForceDetector` | BRUTE_FORCE · CREDENTIAL_STUFFING · MULTI_SOURCE_BRUTE · SLOW_BRUTE_FORCE |
+| `FTPDetector` | FTP_BRUTE_FORCE · FTP_BOUNCE |
+| `ARPDetector` | ARP_SPOOFING (score-based, threshold = 8/12) |
+| `DHCPDetector` | DHCP_STARVATION · DHCP_ROGUE_SERVER · DHCP_DECLINE_FLOOD · DHCP_RAPID_CYCLING |
+
+### 🤖 AI/ML Layer
+
+Each detector has an independent ML model trained on real-world datasets.  
+The system automatically selects the best model (RF or XGBoost) per detector.
+
+| Detector | Best Model | F1 Score |
+|---|---|---|
+| SYN | Random Forest | **0.9965** |
+| ICMP | Random Forest | **0.9780** |
+| DNS | Random Forest | **0.9922** |
+| BruteForce | XGBoost | **0.9991** |
+| FTP | XGBoost | **0.9991** |
+
+**Triple-label alert system:**
+
+| Label | Meaning |
+|---|---|
+| `RULE` | Triggered by rule-based threshold only |
+| `AI_ONLY` | Triggered by ML model only (sub-threshold traffic) |
+| `RULE+AI` | Both rule and ML agree — highest confidence |
+
+### 🔍 Advanced Detection Layers
+
+| Layer | Description |
+|---|---|
+| **Long Window** | Detects slow/stealthy attacks stretched over minutes |
+| **Correlation Engine** | Links related alerts into attack campaigns |
+| **Distributed Detection** | Tracks coordinated multi-source attacks |
 
 ---
 
@@ -63,163 +109,292 @@ Shared logic extracted from all detectors into three reusable modules:
 
 ```
 ai-ids/
+├── manager.py                  ← Entry point, runs all detectors
+├── config.py                   ← All thresholds and settings (centralized)
 │
-├── detectors/                  ← rule-based detection modules
-│   ├── syn.py                  ← SYN Flood + SYN Scan
-│   ├── arp.py                  ← ARP Spoofing
-│   ├── icmp.py                 ← ICMP Flood
-│   ├── dns.py                  ← DNS Flood + DNS Tunnel
-│   └── bruteforce.py           ← Brute Force + Credential Stuffing
+├── detectors/                  ← 7 detector classes
+│   ├── syn.py
+│   ├── arp.py
+│   ├── icmp.py
+│   ├── dns.py
+│   ├── bruteforce.py
+│   ├── ftp.py
+│   └── dhcp.py
 │
-├── core/                       ← shared logic
-│   ├── logger.py
-│   ├── window.py
-│   └── alerting.py
+├── core/                       ← Engine components
+│   ├── alert_store.py          ← SQLite storage (thread-safe)
+│   ├── alerting.py             ← Alert builder
+│   ├── correlation.py          ← Campaign correlation
+│   ├── distributed.py          ← Multi-source tracking
+│   ├── long_window.py          ← Slow attack detection
+│   ├── persistence.py          ← State persistence (.pkl)
+│   ├── threat_feed.py          ← Threat intelligence feed
+│   ├── window.py               ← Sliding window utility
+│   └── worker.py               ← Packet queue worker
 │
-├── data/                       ← JSONL datasets (auto-generated)
-│   ├── syn_dataset.jsonl
-│   ├── arp_dataset.jsonl
-│   ├── icmp_dataset.jsonl
-│   ├── dns_logs.jsonl
-│   └── bruteforce_logs.jsonl
+├── ai/                         ← ML pipeline
+│   ├── train.py                ← Train RF + XGBoost models
+│   ├── predict.py              ← Inference engine
+│   ├── retrain.py              ← Online retraining
+│   └── load_datasets.py        ← Dataset loader + feature engineering
 │
-├── ai/                         ← 🔜 ML layer (coming soon)
+├── dashboard/
+│   ├── backend/                ← Node.js + Express + WebSocket (port 3001)
+│   │   └── server.js
+│   └── frontend/               ← React + Vite (port 3000)
+│       └── src/
+│           ├── components/pages/
+│           │   ├── LiveFeed.jsx
+│           │   ├── Statistics.jsx
+│           │   ├── Detectors.jsx
+│           │   ├── ThreatMap.jsx
+│           │   ├── SystemHealth.jsx
+│           │   └── Settings.jsx
+│           └── App.jsx
 │
-├── dashboard/                  ← 🔜 Real-time dashboard (coming soon)
-│   ├── backend/                ← Node.js + Express + Socket.io + MongoDB
-│   └── frontend/               ← React
+├── ai/models/                  ← Trained models (git-ignored except metrics)
+│   └── metrics.json            ← F1 scores and model comparison
 │
-├── reports/                    ← 🔜 Report generator (coming soon)
-│
-├── manager.py                  ← single entry point, runs all detectors
-└── README.md
+└── data/                       ← Runtime data (git-ignored)
+    └── ids.db                  ← SQLite database
 ```
 
 ---
 
-## 🛠️ Tech Stack
+## 📦 Datasets
 
-### Language
-- Python 3.x
+The ML models were trained on the following publicly available datasets.  
+Download them and place all CSV files inside a `datasets/` folder at the project root.
 
-### Libraries
-All dependencies are listed in `requirements.txt`
+### 1. CIC-IDS-2017
+- **Source:** Canadian Institute for Cybersecurity
+- **URL:** https://www.unb.ca/cic/datasets/ids-2017.html
+- **Files needed:**
+  - `Monday-WorkingHours.pcap_ISCX.csv`
+  - `Tuesday-WorkingHours.pcap_ISCX.csv`
+  - `Wednesday-workingHours.pcap_ISCX.csv`
+  - `Friday-WorkingHours-Afternoon-DDos.pcap_ISCX.csv`
+  - `Friday-WorkingHours-Afternoon-PortScan.pcap_ISCX.csv`
+- **Used for:** SYN flood, port scan, brute force, DoS detection
+
+### 2. CIC-IDS-2018
+- **Source:** Canadian Institute for Cybersecurity
+- **URL:** https://www.unb.ca/cic/datasets/ids-2018.html
+- **Files needed:**
+  - `02-14-2018.csv`
+  - `02-16-2018.csv`
+- **Used for:** brute force, FTP patternss, infiltration attacks
+
+### 3. UNSW-NB15
+- **Source:** Australian Centre for Cyber Security (UNSW)
+- **URL:** https://research.unsw.edu.au/projects/unsw-nb15-dataset
+- **Files needed:**
+  - `UNSW_NB15_training-set.csv`
+- **Used for:** general multi-class attack classification (includes DoS, Fuzzers, Backdoor, Exploits, Reconnaissance)
+
+### 4. CIRA-CIC-DoHBrw-2020
+- **Source:** Canadian Institute for Cybersecurity
+- **URL:** https://www.unb.ca/cic/datasets/dohbrw-2020.html
+- **Files needed:**
+  - `BCCC-CIRA-CIC-DoHBrw-2020.csv`
+- **Used for:** DNS-over-HTTPS tunnel detection
+
+### 5. Kaggle DNS Dataset
+- **Source:** Kaggle
+- **URL:** https://www.kaggle.com/datasets/elmouatezbillahnacer/dns-tunneling-dataset
+- **Files needed:**
+  - `training.csv`
+  - `validating.csv`
+- **Used for:** DNS tunneling and DNS flood detection
+
+### Folder layout after download
+```
+ai-ids/
+└── datasets/
+    ├── Monday-WorkingHours.pcap_ISCX.csv
+    ├── Tuesday-WorkingHours.pcap_ISCX.csv
+    ├── Wednesday-workingHours.pcap_ISCX.csv
+    ├── Friday-WorkingHours-Afternoon-DDos.pcap_ISCX.csv
+    ├── Friday-WorkingHours-Afternoon-PortScan.pcap_ISCX.csv
+    ├── 02-14-2018.csv
+    ├── 02-16-2018.csv
+    ├── UNSW_NB15_training-set.csv
+    ├── BCCC-CIRA-CIC-DoHBrw-2020.csv
+    ├── training.csv
+    └── validating.csv
+```
+
+> The `datasets/` folder is git-ignored. You must download these files manually before training.
 
 ---
 
-## 📦 Setup & Configuration
+## 🛠️ Installation
 
-### 🔹 Prerequisites
-- Python 3.8 or higher
-- pip
-- Root / Administrator privileges (required for raw packet capture)
-- Linux recommended (Kali, Ubuntu) — Scapy works best on Linux
+### Prerequisites
+- Python 3.8+
+- Node.js 18+
+- Root / sudo privileges (required for raw packet capture)
+- Linux recommended (Kali, Ubuntu)
+
+### 1. Clone the repository
+```bash
+git clone https://github.com/hami6och/ai-ids-project.git
+cd ai-ids-project
+```
+
+### 2. Install Python dependencies
+```bash
+sudo pip install scapy scikit-learn xgboost numpy pandas --break-system-packages
+```
+
+> `sqlite3` is part of Python's standard library — no installation needed.
+
+### 3. Install Node.js dependencies
+```bash
+cd dashboard/backend && npm install
+cd ../frontend && npm install
+cd ../..
+```
+
+### 4. Download datasets
+Follow the [Datasets](#-datasets) section above, place all CSV files in `datasets/`.
+
+### 5. Train the ML models
+```bash
+python3 ai/train.py
+```
+
+Trained models are saved to `ai/models/` as `.pkl` files. This step is required before running the IDS.
+
+### 6. Create runtime directories
+```bash
+mkdir -p data data/.state
+```
 
 ---
 
-### 🔹 Installation
+## ▶️ Usage
 
-1. Clone the repository:
 ```bash
-git clone https://github.com/your-username/ai-ids.git
-cd ai-ids
+# Terminal 1 — IDS engine (requires root for packet capture)
+sudo python3 manager.py
+
+# Terminal 2 — Backend API
+cd dashboard/backend && node server.js
+
+# Terminal 3 — Frontend
+cd dashboard/frontend && npm run dev
 ```
 
-2. Create a virtual environment:
-```bash
-python -m venv venv
-```
-
-3. Activate it:
-```bash
-# Linux / Kali
-source venv/bin/activate
-```
-
-4. Install dependencies:
-```bash
-pip install -r requirements.txt
-```
-
-5. Create the data directory:
-```bash
-mkdir -p data
-```
+Open **http://localhost:3000** in your browser.
 
 ---
 
-## ▶️ How to Run
+## 📊 Dashboard
 
-### 🔹 1. Run all detectors at once
-```bash
-sudo python manager.py
-```
-
-### 🔹 2. Run a single detector
-```bash
-sudo python detectors/syn.py
-sudo python detectors/arp.py
-sudo python detectors/icmp.py
-sudo python detectors/dns.py
-sudo python detectors/bruteforce.py
-```
-
-### 🔹 3. Override the network interface
-Set `IFACE` at the top of any detector file or in `manager.py`:
-```python
-IFACE = "eth0"   # or "wlan0", "ens33", etc.
-```
-Leave it as `None` for auto-detection.
-
----
-
-## 📊 Dataset & ML Readiness
-
-Every packet processed by any detector is logged to its JSONL file as a **feature vector**:
-
-```json
-{
-  "timestamp": "2024-01-01 12:00:00",
-  "source_ip": "192.168.1.5",
-  "target_ip": "192.168.1.1",
-  "pps": 4.2,
-  "unique_ports": 3,
-  "total_packets": 12,
-  "label": 0
-}
-```
-
-| `label` | Meaning |
+| Page | Description |
 |---|---|
-| `0` | Normal traffic |
-| `1` | Attack traffic (set by alert path) |
+| **Live Feed** | Real-time alert stream with type, severity, confidence, and source IP |
+| **Statistics** | Attack distribution charts, detection rates over time |
+| **Detectors** | Per-detector status, packet counts, alert counts |
+| **Threat Map** | Geographic visualization of attack source IPs |
+| **System Health** | Queue usage, CPU, memory, packet drop rate |
+| **Configuration** | Live threshold editing — changes apply without restart |
 
-Loading the dataset for ML training:
-```python
-import json
+### Live Config Update
+The dashboard writes threshold changes directly to the SQLite `config` table.  
+`manager.py` polls this table every **30 seconds** and applies updates at runtime — no restart required.
 
-data = [json.loads(line) for line in open("data/syn_dataset.jsonl")]
+---
+
+## 🗄️ SQLite Schema
+
+```sql
+-- Alerts (label = 1 only)
+CREATE TABLE alerts (
+    id          INTEGER PRIMARY KEY AUTOINCREMENT,
+    timestamp   TEXT,
+    detector    TEXT,
+    attack_type TEXT,
+    severity    TEXT,
+    source_ip   TEXT,
+    dest_ip     TEXT,
+    label_type  TEXT,    -- RULE / AI_ONLY / RULE+AI
+    confidence  REAL,
+    details     TEXT
+);
+
+-- All traffic (label 0 and 1)
+CREATE TABLE traffic (
+    id        INTEGER PRIMARY KEY AUTOINCREMENT,
+    timestamp TEXT,
+    src_ip    TEXT,
+    dst_ip    TEXT,
+    protocol  TEXT,
+    label     INTEGER   -- 0 = normal, 1 = attack
+);
+
+-- Live configuration
+CREATE TABLE config (
+    key        TEXT PRIMARY KEY,
+    value      TEXT,
+    updated_at TEXT
+);
 ```
 
 ---
 
-## 🚀 Roadmap
+## ✅ Test Results
 
-- [x] Rule-based SYN Flood / SYN Scan detection
-- [x] Rule-based ARP Spoofing detection
-- [x] Rule-based ICMP Flood detection
-- [x] Rule-based DNS Flood / Tunnel detection
-- [x] Rule-based Brute Force / Credential Stuffing detection
-- [x] Shared `core/` module
-- [x] JSONL dataset logging with `label` field
-- [ ] 🔜 AI layer — train model on collected datasets
-- [ ] 🔜 Real-time dashboard — React + Node.js + MongoDB
-- [ ] 🔜 Report generator — PDF/HTML session reports
-- [ ] 🔜 DHCP attack detection
+| Test Suite | Result |
+|---|---|
+| Legitimate traffic (8 scenarios) | ✅ **0 / 8** false positives |
+| Standard attacks (13 types) | ✅ **13 / 13** detected |
+| AI evasive attacks (6 types) | ✅ **5 / 6** detected |
+| Queue drop rate | ✅ **0.0%** (2,657 packets) |
+
+---
+
+## ⚙️ Key Configuration (`config.py`)
+
+```python
+# AI confidence thresholds (tuned to eliminate false positives)
+AI_THRESHOLD_SYN        = 0.75
+AI_THRESHOLD_ICMP       = 0.80
+AI_THRESHOLD_DNS        = 0.75
+AI_THRESHOLD_BRUTEFORCE = 0.80
+AI_THRESHOLD_FTP        = 0.80
+
+# DNS false positive fixes
+DNS_REQUEST_THRESHOLD   = 30
+DNS_FLOOD_MIN_PPS       = 10
+DNS_AI_MIN_REQUESTS     = 10
+
+# Storage
+SQLITE_DB_PATH          = "data/ids.db"
+
+# Known safe hosts
+KNOWN_GATEWAYS          = ["192.168.100.1", "192.168.56.254"]
+DHCP_LEGITIMATE_SERVERS = ["192.168.68.1"]
+```
+
+All thresholds can also be changed live from the dashboard Configuration page without restarting the IDS.
+
+---
+
+## 🖥️ Lab Environment
+
+| Component | Details |
+|---|---|
+| IDS Machine | Kali Linux · 192.168.68.130 · eth0 |
+| Attacker Machine | Kali Linux · 192.168.68.131 |
+| Network Simulator | GNS3 + VMware Workstation |
+| Router | VyOS |
 
 ---
 
 ## 📜 License
-This project was built as part of a cybersecurity academic project.
-Intended for ethical learning, lab environments, and research only.
+
+Built as an academic cybersecurity capstone project.  
+Intended for ethical learning, lab environments, and research only.  
 Unauthorized use on networks without permission is prohibited.
